@@ -1,0 +1,5 @@
+name: "claude_haiku"
+provider: "anthropic"
+model_name: "claude-haiku-4-5-20251001"
+temperature: 0.0
+thinking_budget: null

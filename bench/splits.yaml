@@ -1,0 +1,23 @@
+# BrowseComp has no official splits. We pick three sizes for our workflow:
+#
+# dev   — 10 tasks, smoke tests during code changes
+# smoke — 50 tasks, SFT iteration + rough comparisons
+# full  — all 1266 tasks, final eval
+#
+# Indices are 0-based into the upstream CSV row order. The `dev` and `smoke`
+# indices are arbitrary but fixed for reproducibility.
+
+dev:
+  indices: [0, 42, 137, 250, 411, 578, 693, 814, 987, 1123]
+
+smoke:
+  indices: [
+    0, 25, 50, 75, 100, 125, 150, 175, 200, 225,
+    250, 275, 300, 325, 350, 375, 400, 425, 450, 475,
+    500, 525, 550, 575, 600, 625, 650, 675, 700, 725,
+    750, 775, 800, 825, 850, 875, 900, 925, 950, 975,
+    1000, 1025, 1050, 1075, 1100, 1125, 1150, 1175, 1200, 1225,
+  ]
+
+full:
+  indices: null  # null = all tasks

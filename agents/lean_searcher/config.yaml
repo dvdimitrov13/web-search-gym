@@ -1,0 +1,26 @@
+agent:
+  name: "lean_searcher"
+  display_name: "Lean Searcher"
+  description: "Exa search loop + short-answer extractor. BrowseComp-shaped output."
+  version: "0.1.0"
+
+budget:
+  max_searches: 5
+  scratchpad_max_tokens: 512
+  results_per_query: 5
+
+searcher:
+  # Defaults; individual fields can also live on the model config.
+  temperature: 0.2
+  thinking_budget: null
+  thinking_instruction: true
+  thinking_passthrough: true
+  force_tools: false
+  max_nudges: 5
+  max_shrink_attempts: 2
+
+extractor:
+  temperature: 0.0
+  max_tokens: 1024
+
+verbose: true

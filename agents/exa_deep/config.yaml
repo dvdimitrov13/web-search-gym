@@ -1,0 +1,14 @@
+agent:
+  name: "exa_deep"
+  display_name: "Exa Deep"
+  description: "Single Exa /search call at a deep tier (no harness). Sonnet extractor."
+  version: "0.1.0"
+
+# No budget section — the Exa tier decides its own fan-out. `--model` selects
+# the tier via one of the models/exa_deep_*.yaml configs.
+
+extractor:
+  temperature: 0.0
+  max_tokens: 1024
+
+verbose: true

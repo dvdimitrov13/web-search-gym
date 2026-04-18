@@ -1,0 +1,54 @@
+# Claude local state
+.claude/
+CLAUDE.local.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Environment
+.env
+.venv/
+env/
+
+# Generated artifacts (regenerable, large)
+reports/*
+!reports/.gitkeep
+trajectories/*
+!trajectories/.gitkeep
+sft/data/*
+!sft/data/.gitkeep
+sft/checkpoints/
+sft/logs/
+
+# Results: commit CSVs/JSONs, ignore large traces
+results/raw/
+results/trajectories/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Cache
+.cache/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets
+*.pem
+*.key
+credentials.json

@@ -1,0 +1,10 @@
+{
+  "agent": "exa_deep",
+  "model_tag": "searcher-exa_deep_lite__extractor-claude_sonnet",
+  "run_id": "20260418_212023",
+  "tasks": 10,
+  "correct": 1,
+  "accuracy": 0.1,
+  "errors": 0,
+  "elapsed_seconds": 31.7
+}

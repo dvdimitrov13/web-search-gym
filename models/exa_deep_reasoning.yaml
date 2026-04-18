@@ -1,0 +1,3 @@
+name: "exa_deep_reasoning"
+provider: "exa"
+model_name: "deep-reasoning"

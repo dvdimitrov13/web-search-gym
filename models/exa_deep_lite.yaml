@@ -1,0 +1,4 @@
+name: "exa_deep_lite"
+provider: "exa"
+# One of: deep-lite | deep | deep-reasoning (passed as `type` to /search).
+model_name: "deep-lite"

@@ -1,0 +1,10 @@
+name: "qwen3_8b_base"
+provider: "openrouter"
+model_name: "qwen/qwen3-8b"
+temperature: 0.2
+# Served over OpenRouter's Anthropic-compatible endpoint (set OPENROUTER_API_KEY in .env).
+# For a locally served vLLM checkpoint, add a sibling YAML with:
+#   provider: "custom"
+#   base_url: "http://localhost:8000"
+#   api_key_env: ""   # vLLM doesn't require one
+#   model_name: "Qwen/Qwen3-8B"  # or your checkpoint alias
