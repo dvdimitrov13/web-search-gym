@@ -1,0 +1,26 @@
+agent:
+  name: "chroma_agent"
+  display_name: "Chroma Agent"
+  description: "Search (highlights) + grep + prune + submit. Self-editing context via prune rewriting past tool_results."
+  version: "0.1.0"
+
+budget:
+  max_searches: 5
+  num_results_per_search: 5
+  num_sentences_per_highlight: 3
+  highlights_per_url: 5
+
+searcher:
+  temperature: 0.2
+  thinking_budget: null
+  thinking_instruction: false
+  # Momentary thinking — matches lean_searcher's current setup.
+  thinking_passthrough: false
+  force_tools: false
+  max_nudges: 5
+
+extractor:
+  temperature: 0.0
+  max_tokens: 1024
+
+verbose: true

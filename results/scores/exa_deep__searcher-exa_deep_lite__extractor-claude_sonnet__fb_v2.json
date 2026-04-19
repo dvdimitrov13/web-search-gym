@@ -1,0 +1,10 @@
+{
+  "agent": "exa_deep",
+  "model_tag": "searcher-exa_deep_lite__extractor-claude_sonnet",
+  "run_id": "fb_v2",
+  "tasks": 33,
+  "correct": 20,
+  "accuracy": 0.6060606060606061,
+  "errors": 0,
+  "elapsed_seconds": 148.2
+}

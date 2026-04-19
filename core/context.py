@@ -66,8 +66,8 @@ def live_state_block(
         "<budget>\n"
         f"searches: {search_count}/{max_searches} used "
         f"({searches_remaining} remaining)\n"
-        f"scratchpad: ~{scratchpad_tokens}/{scratchpad_max_tokens} tokens used "
+        f"commit_memory: ~{scratchpad_tokens}/{scratchpad_max_tokens} tokens used "
         f"(~{scratchpad_remaining} remaining)\n"
         "</budget>\n\n"
-        f"<scratchpad>\n{scratchpad}\n</scratchpad>"
+        f"<commit_memory>\n{scratchpad}\n</commit_memory>"
     )

@@ -1,0 +1,10 @@
+{
+  "agent": "lean_searcher",
+  "model_tag": "searcher-claude_sonnet__extractor-claude_sonnet",
+  "run_id": "fb_v2",
+  "tasks": 33,
+  "correct": 23,
+  "accuracy": 0.696969696969697,
+  "errors": 0,
+  "elapsed_seconds": 1195.2
+}

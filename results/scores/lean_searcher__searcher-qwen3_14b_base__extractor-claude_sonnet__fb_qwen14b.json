@@ -1,0 +1,10 @@
+{
+  "agent": "lean_searcher",
+  "model_tag": "searcher-qwen3_14b_base__extractor-claude_sonnet",
+  "run_id": "fb_qwen14b",
+  "tasks": 33,
+  "correct": 28,
+  "accuracy": 0.8484848484848485,
+  "errors": 1,
+  "elapsed_seconds": 937.7
+}

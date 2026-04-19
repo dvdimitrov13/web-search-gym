@@ -32,7 +32,7 @@ def test_tool_set_matches_canonical():
     from core.harness import ANTHROPIC_TOOLS
 
     names = {t["name"] for t in ANTHROPIC_TOOLS}
-    assert names == {"exa_search", "scratchpad", "submit"}
+    assert names == {"exa_search", "commit_memory", "submit"}
 
 
 def test_system_prompt_contains_date_and_budget():

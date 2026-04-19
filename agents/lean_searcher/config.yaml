@@ -18,6 +18,8 @@ searcher:
   thinking_instruction: false
   thinking_passthrough: false
   force_tools: false
+  # Ablation: set false to drop the scratchpad tool entirely (v3b).
+  use_scratchpad: true
   max_nudges: 5
   max_shrink_attempts: 2
 

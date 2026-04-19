@@ -172,7 +172,7 @@ def _scratchpad_from_trace(messages: list[dict]) -> list[str]:
             if not isinstance(content, list):
                 continue
             for b in content:
-                if b.get("type") == "tool_use" and b.get("name") == "scratchpad":
+                if b.get("type") == "tool_use" and b.get("name") in ("commit_memory", "scratchpad"):
                     inp = b.get("input", {}) or {}
                     old = inp.get("old_text")
                     new = inp.get("new_text", "")

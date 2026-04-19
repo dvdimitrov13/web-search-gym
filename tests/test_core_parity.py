@@ -55,7 +55,7 @@ def test_tool_name_set_matches_across_formats():
     anthropic_names = {t["name"] for t in ANTHROPIC_TOOLS}
     openai_names = {t["function"]["name"] for t in OPENAI_TOOLS}
     assert anthropic_names == openai_names
-    assert anthropic_names == {"exa_search", "scratchpad", "submit"}
+    assert anthropic_names == {"exa_search", "commit_memory", "submit"}
 
 
 def test_tool_required_fields_match():
@@ -85,8 +85,8 @@ def test_live_state_block_shape(max_searches, scratchpad, max_tokens):
     )
     assert "<budget>" in out
     assert "</budget>" in out
-    assert "<scratchpad>" in out
-    assert "</scratchpad>" in out
+    assert "<commit_memory>" in out
+    assert "</commit_memory>" in out
     assert f"1/{max_searches}" in out
 
 

@@ -1,9 +1,13 @@
-"""The single Exa entry point. Always summary mode, never highlights.
+"""The single Exa entry point.
 
-Mismatch between training-time content format and inference-time content format
-was Issue 007-5 in the prior repo. This module exists to make that regression
-impossible: every caller (synth, harness, bench) calls `search` here, and it
-always passes `contents={"summary": {"query": query}}`.
+Two contracts:
+- `search()` — summary mode (`contents={"summary": {"query": query}}`). Used by
+  every caller in the lean_searcher training/inference path. Mismatch between
+  training-time content format and inference-time content format was Issue
+  007-5 in the prior repo, so this path is pinned.
+- `search_highlights()` — eval-only, returns chunked highlights per URL. Used
+  by chroma_agent's search/grep/prune harness. NOT part of the lean_searcher
+  training contract; do not call from synth/lean.
 
 Returns a `SearchResults` dataclass with already-parsed `SourceInfo` objects,
 so downstream code never touches the raw Exa SDK response.
@@ -17,6 +21,25 @@ from dataclasses import dataclass, field
 from exa_py import Exa
 
 from core.types import SourceInfo
+
+
+@dataclass
+class HighlightChunk:
+    """One reranked highlight block extracted from a URL."""
+
+    url: str
+    title: str
+    text: str
+    published: str = "unknown"
+
+
+@dataclass
+class HighlightResults:
+    """Chunked search results for the chroma_agent path."""
+
+    query: str
+    chunks: list[HighlightChunk]
+    filters: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -70,6 +93,52 @@ class ExaClient:
             for r in raw.results
         ]
         return SearchResults(query=query, sources=sources, filters=filters)
+
+    def search_highlights(
+        self,
+        query: str,
+        *,
+        num_results: int = 5,
+        num_sentences: int = 3,
+        highlights_per_url: int = 5,
+        highlights_query: str | None = None,
+        **filters,
+    ) -> HighlightResults:
+        """Search Exa and return reranked highlight chunks per URL.
+
+        Eval-only (not used in the lean_searcher training pipeline). Used by
+        chroma_agent, where the agent needs chunked, query-ranked evidence
+        rather than a single per-URL summary.
+
+        Returns `HighlightResults` with a flat list of chunks — one per
+        highlight block, tagged with source URL/title — so the caller can
+        index them by a chunk id and prune selectively.
+        """
+        hq = highlights_query or query
+        raw = self._exa.search(
+            query,
+            num_results=num_results,
+            contents={
+                "highlights": {
+                    "num_sentences": num_sentences,
+                    "highlights_per_url": highlights_per_url,
+                    "query": hq,
+                },
+            },
+            **filters,
+        )
+        chunks: list[HighlightChunk] = []
+        for r in raw.results:
+            url = r.url
+            title = r.title or "(untitled)"
+            published = r.published_date or "unknown"
+            highlights = getattr(r, "highlights", None) or []
+            if not highlights:
+                continue
+            for h in highlights:
+                text = h if isinstance(h, str) else getattr(h, "text", None) or str(h)
+                chunks.append(HighlightChunk(url=url, title=title, text=text, published=published))
+        return HighlightResults(query=query, chunks=chunks, filters=filters)
 
     def deep_search(self, query: str, tier: str) -> SearchResults:
         """Run a multi-step deep tier — 'deep-lite' | 'deep' | 'deep-reasoning'.

@@ -29,7 +29,11 @@ from core.context import (
     live_state_block,
 )
 from core.exa_client import ExaClient
-from core.prompts import SEARCHER_PROMPT, THINKING_INSTRUCTION
+from core.prompts import (
+    SEARCHER_PROMPT,
+    SEARCHER_PROMPT_NO_SCRATCHPAD,
+    THINKING_INSTRUCTION,
+)
 from core.tools import ANTHROPIC_TOOLS
 from core.trace import SubmittedUrl, Trace, TraceMetadata
 from core.types import RetryableAgentError, SourceInfo, Task
@@ -174,6 +178,7 @@ class SearcherHarness:
         results_per_query: int = 5,
         max_nudges: int = 5,
         max_shrink_attempts: int = 2,
+        use_scratchpad: bool = True,
         verbose: bool = False,
         exa_client: ExaClient | None = None,
     ):
@@ -184,6 +189,7 @@ class SearcherHarness:
         self.thinking_instruction = thinking_instruction
         self.thinking_passthrough = thinking_passthrough
         self.force_tools = force_tools
+        self.use_scratchpad = use_scratchpad
 
         self.max_searches = max_searches
         self.scratchpad_max_tokens = scratchpad_max_tokens
@@ -226,11 +232,17 @@ class SearcherHarness:
             )
 
             # When the scratchpad is over budget, restrict tools to scratchpad
-            # only until the model shrinks it back in range.
-            turn_tools = (
-                [t for t in ANTHROPIC_TOOLS if t["name"] == "scratchpad"]
-                if must_shrink
+            # only until the model shrinks it back in range. When the scratchpad
+            # is disabled entirely, strip it from the tool list.
+            base_tools = (
+                [t for t in ANTHROPIC_TOOLS if t["name"] != "commit_memory"]
+                if not self.use_scratchpad
                 else ANTHROPIC_TOOLS
+            )
+            turn_tools = (
+                [t for t in ANTHROPIC_TOOLS if t["name"] == "commit_memory"]
+                if must_shrink
+                else base_tools
             )
 
             response = self._call_llm(system, call_messages, turn_tools)
@@ -318,7 +330,8 @@ class SearcherHarness:
 
         Static across turns (no live state) so prompt caching can kick in.
         """
-        system = SEARCHER_PROMPT.format(
+        prompt_template = SEARCHER_PROMPT if self.use_scratchpad else SEARCHER_PROMPT_NO_SCRATCHPAD
+        system = prompt_template.format(
             date=date.today().isoformat(),
             max_searches=self.max_searches,
         )
@@ -433,7 +446,7 @@ class SearcherHarness:
                 if not tool_results[-1].get("is_error"):
                     search_count += 1
 
-            elif block.name == "scratchpad":
+            elif block.name == "commit_memory":
                 tr, scratchpad, must_shrink, shrink_attempts = (
                     self._handle_scratchpad(
                         block,

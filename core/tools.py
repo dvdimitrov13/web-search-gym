@@ -68,11 +68,11 @@ CANONICAL_TOOLS = {
         },
         "required": ["query"],
     },
-    "scratchpad": {
+    "commit_memory": {
         "description": (
-            "A persistent scratchpad document you can edit in place. "
-            "Use it to write your search plan, track findings, and note "
-            "coverage gaps. "
+            "A persistent working memory you can edit in place. Commit to it "
+            "after each search to lock in what you've resolved and what's "
+            "still open. "
             "To create or overwrite: provide only new_text. "
             "To edit in place: provide old_text (substring to find) and "
             "new_text (replacement). "
@@ -82,8 +82,8 @@ CANONICAL_TOOLS = {
             "old_text": {
                 "type": "string",
                 "description": (
-                    "Substring to find in the current scratchpad. "
-                    "Omit to overwrite the entire scratchpad."
+                    "Substring to find in the current memory. "
+                    "Omit to overwrite the entire memory."
                 ),
             },
             "new_text": {
