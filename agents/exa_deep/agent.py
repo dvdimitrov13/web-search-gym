@@ -52,12 +52,15 @@ class ExaDeepAgent(BaseAgent):
 
         e = model_configs["extractor"]
         ext_cfg = self.config.get("extractor", {})
+        # Agent yaml wins over model yaml for extractor temperature so shared
+        # model configs (e.g. claude_sonnet with thinking temperature=1.0) don't
+        # leak sampling into the deterministic extractor.
         self.extractor = Extractor(
             model_name=e["model_name"],
             provider=e.get("provider", "anthropic"),
             base_url=e.get("base_url", ""),
             api_key_env=e.get("api_key_env", ""),
-            temperature=e.get("temperature", ext_cfg.get("temperature", 0.0)),
+            temperature=ext_cfg.get("temperature", e.get("temperature", 0.0)),
             max_tokens=ext_cfg.get("max_tokens", 1024),
         )
 

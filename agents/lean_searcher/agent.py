@@ -66,12 +66,16 @@ class LeanSearcherAgent(BaseAgent):
         )
 
         ext_cfg = self.config.get("extractor", {})
+        # Extractor precedence: agent yaml wins over model yaml so the extractor
+        # stays deterministic even when the shared model config enables sampling
+        # for its searcher role (e.g. claude_sonnet uses temperature=1.0 for
+        # extended thinking).
         self.extractor = Extractor(
             model_name=e_model["model_name"],
             provider=e_model.get("provider", "anthropic"),
             base_url=e_model.get("base_url", ""),
             api_key_env=e_model.get("api_key_env", ""),
-            temperature=e_model.get("temperature", ext_cfg.get("temperature", 0.0)),
+            temperature=ext_cfg.get("temperature", e_model.get("temperature", 0.0)),
             max_tokens=ext_cfg.get("max_tokens", 1024),
         )
 
