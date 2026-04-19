@@ -16,7 +16,7 @@ searcher:
   # thinking_instruction is the "think concisely" hint for non-extended-thinking
   # mode; leave OFF when the model is using extended thinking (thinking_budget>0).
   thinking_instruction: false
-  thinking_passthrough: true
+  thinking_passthrough: false
   force_tools: false
   max_nudges: 5
   max_shrink_attempts: 2
