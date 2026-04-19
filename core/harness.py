@@ -426,6 +426,28 @@ class SearcherHarness:
                 )
                 tool_results.append(tr)
 
+            # Disabled — kept for a future re-enablement pass.
+            # elif block.name == "prune":
+            #     urls = block.input.get("urls") or []
+            #     reason = (block.input.get("reason") or "").strip()
+            #     dropped = [u for u in urls if u in source_bank]
+            #     for u in dropped:
+            #         source_bank.pop(u, None)
+            #     tool_results.append({
+            #         "type": "tool_result",
+            #         "tool_use_id": block.id,
+            #         "content": (
+            #             f"Pruned {len(dropped)}/{len(urls)} URL(s) from source bank. "
+            #             f"{len(source_bank)} source(s) remain."
+            #             + (f" Reason: {reason}" if reason else "")
+            #         ),
+            #     })
+            #     if self.verbose:
+            #         console.print(
+            #             f"  [yellow]Prune:[/yellow] {len(dropped)}/{len(urls)} URLs "
+            #             f"([dim]{reason[:80]}[/dim])"
+            #         )
+
             elif block.name == "submit":
                 urls = block.input.get("urls", [])
                 for u in urls:

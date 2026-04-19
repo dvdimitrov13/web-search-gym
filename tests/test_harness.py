@@ -28,7 +28,7 @@ def test_fuzzy_replace_missing():
 
 
 def test_tool_set_matches_canonical():
-    """Harness-exported ANTHROPIC_TOOLS has all three tools."""
+    """Harness-exported ANTHROPIC_TOOLS has every canonical tool."""
     from core.harness import ANTHROPIC_TOOLS
 
     names = {t["name"] for t in ANTHROPIC_TOOLS}

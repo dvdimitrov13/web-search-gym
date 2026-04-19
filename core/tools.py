@@ -95,6 +95,35 @@ CANONICAL_TOOLS = {
         },
         "required": ["new_text"],
     },
+    # Disabled — kept here (not in CANONICAL_TOOLS) so we can re-enable easily.
+    # The companion handler in core/harness.py is also disabled. Sonnet declined
+    # to use this tool on 3 noisy smoke tasks; re-evaluate when a prompt
+    # instruction or a weaker model makes adoption more likely.
+    # "prune": {
+    #     "description": (
+    #         "Remove URLs from the source bank. Use this to drop irrelevant "
+    #         "results that shouldn't feed the downstream extractor — noisy "
+    #         "pages, off-topic hits, duplicates, wrong entities with the same "
+    #         "name. Pruned URLs are permanently removed from this run's source "
+    #         "bank, even if a later search re-surfaces them."
+    #     ),
+    #     "properties": {
+    #         "urls": {
+    #             "type": "array",
+    #             "description": "URLs to remove from the source bank.",
+    #             "items": {"type": "string"},
+    #         },
+    #         "reason": {
+    #             "type": "string",
+    #             "description": (
+    #                 "One short sentence on why these URLs are being pruned "
+    #                 "(e.g., 'off-topic product listings', 'different person "
+    #                 "with same name')."
+    #             ),
+    #         },
+    #     },
+    #     "required": ["urls"],
+    # },
     "submit": {
         "description": (
             "Submit your final ranked list of relevant URLs. "
