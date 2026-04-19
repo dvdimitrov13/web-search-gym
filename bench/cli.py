@@ -81,23 +81,23 @@ def list_models():
 @click.option("--model", "-m", default=None, help="Model name applied to all stages")
 @click.option("--searcher-model", default=None, help="Override searcher-stage model")
 @click.option("--extractor-model", default=None, help="Override extractor-stage model")
-@click.option("--split", "-s", default="dev", help="Split: dev | smoke | full (default: dev)")
+@click.option("--dataset", "-d", default="browsecomp",
+              type=click.Choice(["browsecomp", "filterbench"]),
+              help="Dataset (default: browsecomp)")
+@click.option("--split", "-s", default="dev",
+              help="BrowseComp split (dev|smoke|full) or filterbench split (dev|test)")
 @click.option("--indices", default=None, help="Comma-separated row indices (overrides --split)")
 @click.option("--concurrent", "-c", default=1, help="Max concurrent tasks")
 @click.option("--run-id", default=None, help="Run ID (default: timestamp)")
-def run_cmd(agent, model, searcher_model, extractor_model, split, indices, concurrent, run_id):
-    """Run an agent on BrowseComp tasks and grade it."""
+def run_cmd(agent, model, searcher_model, extractor_model, dataset, split, indices, concurrent, run_id):
+    """Run an agent on a benchmark dataset and grade it."""
     from agents.registry import load_agent
-    from bench.browsecomp import load_tasks
     from bench.runner import run as run_bench
 
     if run_id is None:
         run_id = time.strftime("%Y%m%d_%H%M%S")
 
-    if indices:
-        idx_list = [int(x.strip()) for x in indices.split(",") if x.strip()]
-    else:
-        idx_list = _load_split_indices(split)
+    idx_list = [int(x.strip()) for x in indices.split(",") if x.strip()] if indices else None
 
     agent_inst = load_agent(
         agent,
@@ -106,7 +106,13 @@ def run_cmd(agent, model, searcher_model, extractor_model, split, indices, concu
         extractor_model=extractor_model,
     )
 
-    tasks = load_tasks(indices=idx_list)
+    if dataset == "browsecomp":
+        from bench.browsecomp import load_tasks
+        tasks = load_tasks(indices=idx_list if idx_list is not None else _load_split_indices(split))
+    else:
+        from bench.filterbench import load_tasks as load_filter
+        tasks = load_filter(split=split, indices=idx_list)
+
     if not tasks:
         console.print("[yellow]No tasks to run.[/yellow]")
         return

@@ -6,6 +6,7 @@ AGENT ?= lean_searcher
 MODEL ?=
 SEARCHER_MODEL ?=
 EXTRACTOR_MODEL ?=
+DATASET ?= browsecomp
 SPLIT ?= dev
 RUN_ID ?= $(shell date +%Y%m%d_%H%M%S)
 CONCURRENT ?= 1
@@ -27,12 +28,13 @@ setup: ## uv sync + .env
 
 # === Benchmark ===
 
-bench: ## Run bench (usage: make bench AGENT=lean_searcher MODEL=claude_sonnet SPLIT=dev)
+bench: ## Run bench (make bench AGENT=... MODEL=... DATASET=browsecomp|filterbench SPLIT=...)
 	$(PYTHON) -m bench.cli run \
 		--agent $(AGENT) \
 		$(if $(MODEL),--model $(MODEL),) \
 		$(if $(SEARCHER_MODEL),--searcher-model $(SEARCHER_MODEL),) \
 		$(if $(EXTRACTOR_MODEL),--extractor-model $(EXTRACTOR_MODEL),) \
+		--dataset $(DATASET) \
 		--split $(SPLIT) \
 		--concurrent $(CONCURRENT) \
 		--run-id $(RUN_ID)
