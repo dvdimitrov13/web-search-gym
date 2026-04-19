@@ -56,7 +56,7 @@ class LeanSearcherAgent(BaseAgent):
             ),
             thinking_instruction=searcher_cfg.get("thinking_instruction", True),
             thinking_passthrough=searcher_cfg.get("thinking_passthrough", True),
-            force_tools=searcher_cfg.get("force_tools", False),
+            force_tools=s_model.get("force_tools", searcher_cfg.get("force_tools", False)),
             max_searches=budget.get("max_searches", 5),
             scratchpad_max_tokens=budget.get("scratchpad_max_tokens", 512),
             results_per_query=budget.get("results_per_query", 5),

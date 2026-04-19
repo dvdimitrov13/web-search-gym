@@ -1,14 +1,9 @@
-name: "qwen3_8b_base"
+name: "qwen3_14b_base"
 provider: "openrouter"
-model_name: "qwen/qwen3-8b"
+model_name: "qwen/qwen3-14b"
 temperature: 0.2
 # OpenRouter returns tool_use blocks without setting stop_reason="tool_use" for
 # Qwen, and the model needs a nudge to use tools consistently — force_tools
 # here wins over the agent-level default.
 force_tools: true
 # Served over OpenRouter's Anthropic-compatible endpoint (set OPENROUTER_API_KEY in .env).
-# For a locally served vLLM checkpoint, add a sibling YAML with:
-#   provider: "custom"
-#   base_url: "http://localhost:8000"
-#   api_key_env: ""   # vLLM doesn't require one
-#   model_name: "Qwen/Qwen3-8B"  # or your checkpoint alias
