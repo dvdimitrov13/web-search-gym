@@ -113,10 +113,16 @@ background to the problem, do not attempt to solve the problem, do not argue \
 for any answer different than [correct_answer], focus only on whether the \
 answers match.
 
-correct: Answer 'yes' if extracted_final_answer matches the [correct_answer] \
-given above, or is within a small margin of error for numerical problems. \
-Answer 'no' otherwise, i.e. if there is any inconsistency, ambiguity, \
-non-equivalency, or if the extracted answer is incorrect.
+correct: Answer 'yes' if ANY of the following holds:
+- extracted_final_answer matches [correct_answer] exactly (ignoring case and surrounding whitespace).
+- the two refer to the same real-world entity via a common alias, historical name, \
+full vs. short form, or ticker: e.g. "Lineage" ≡ "Lineage Logistics", "UK" ≡ \
+"United Kingdom", "AAPL" ≡ "Apple Inc.", "JFK" ≡ "John F. Kennedy", \
+"FDA" ≡ "U.S. Food and Drug Administration".
+- numerical answers are within a small margin of error (rounding, unit conversions, \
+standard abbreviations like "$383B" vs "$383 billion").
+Answer 'no' if the two refer to different entities, different numbers or dates \
+beyond trivial rounding, or if the extracted answer is otherwise incorrect.
 
 confidence: The extracted confidence score between 0% and 100% from [response]. \
 Put 100 if there is no confidence score available."""
