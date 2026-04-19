@@ -342,6 +342,25 @@ class SearcherHarness:
             scratchpad_max_tokens=self.scratchpad_max_tokens,
         )
         call_messages = list(messages)
+        # Strip thinking blocks from older assistant turns so thinking stays
+        # momentary (Sonnet re-thinks per turn instead of carrying prior
+        # deliberation). The full thinking is preserved in `messages` — which
+        # is what gets saved to the Trace — so this only affects what the API
+        # sees on the next call.
+        if not self.thinking_passthrough:
+            call_messages = [
+                {
+                    "role": m["role"],
+                    "content": (
+                        [b for b in m["content"]
+                         if not (isinstance(b, dict) and b.get("type") == "thinking")
+                         and not (hasattr(b, "type") and getattr(b, "type", None) == "thinking")]
+                        if m["role"] == "assistant" and isinstance(m.get("content"), list)
+                        else m.get("content")
+                    ),
+                }
+                for m in call_messages
+            ]
         if call_messages and call_messages[-1].get("role") == "user":
             last = dict(call_messages[-1])
             content = last.get("content", "")
@@ -376,13 +395,12 @@ class SearcherHarness:
     def _assistant_message(self, response) -> dict:
         """Convert an Anthropic response into an assistant message for replay.
 
-        Optionally strips thinking blocks so they don't flow into the next
-        turn (P2-style — matches a common Qwen3 inference setup).
+        Always preserves thinking blocks so the saved Trace carries the full
+        reasoning for debugging. `thinking_passthrough=False` strips thinking
+        only from the API-bound view (see `_inject_live_state`), not from the
+        trace record.
         """
-        content = response.content
-        if not self.thinking_passthrough:
-            content = [b for b in content if getattr(b, "type", None) != "thinking"]
-        return {"role": "assistant", "content": content}
+        return {"role": "assistant", "content": response.content}
 
     # ── Tool dispatch ───────────────────────────────────────────────
 
