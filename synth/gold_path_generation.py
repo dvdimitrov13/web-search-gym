@@ -285,6 +285,47 @@ multi-clause.
 Emit via submit_question."""
 
 
+# ── Polish pass ────────────────────────────────────────────────────────
+
+POLISH_SYSTEM = """\
+You rewrite multi-hop questions in BrowseComp style.
+
+BrowseComp style characteristics:
+- ONE compact clause (or at most two clauses) ending in a single '?'.
+- Entities discovered by earlier hops are referred to by role/property, NEVER \
+named. E.g., instead of "BlackRock CEO Larry Fink", say "the CEO of the \
+world's largest asset manager".
+- Filter mechanics are disguised. Do NOT write "news reports from March 2024", \
+"on the city's official website", "according to X's SEC filing". Instead bury \
+the hint naturally — "in a press announcement that spring", "per the municipal \
+record", "in a mandatory regulatory disclosure".
+- No "; and given that", "and what year was...", or any enumerator that \
+reveals the hop count.
+- No narrative preamble that names every entity in the chain.
+
+You will receive the ordered chain of hops + a draft question. Your job: \
+rewrite the draft so it obeys BrowseComp style, without changing the golden \
+answer or introducing any fact not already in the chain.
+
+Output ONLY the rewritten question — no quotes, no commentary, no prefix."""
+
+
+POLISH_USER = """\
+Chain (ordered, each hop feeds into the next):
+
+{chain_summary}
+
+Golden answer (terminal): {golden!r}
+
+Draft question:
+{draft}
+
+Forbidden tokens (these intermediate answers must NOT appear in your rewrite):
+{forbidden}
+
+Rewrite the draft in BrowseComp style."""
+
+
 RETRY_HOP_FEEDBACK = """\
 The cold retrievability check FAILED for your submit_hop.
 
@@ -396,6 +437,71 @@ def _exa_search_formatted(exa: ExaClient, query: str, filters: dict) -> str:
         return exa.search(query, **args).formatted()
     except Exception as e:
         return f"Search error: {e}"
+
+
+def polish_question(
+    client: anthropic.Anthropic,
+    chain: list[Hop],
+    draft: str,
+    usage_tracker: dict | None = None,
+    model: str = MODEL,
+) -> str:
+    """Rewrite the draft question in BrowseComp style.
+
+    Rules (enforced by prompt + post-check): no naming of intermediate expected
+    answers, no explicit filter mechanics in prose, single compact clause.
+    """
+    chain_summary = "\n".join(
+        f"  hop {h.step}: query={h.query!r} filters={json.dumps(h.filters)} "
+        f"→ {h.expected!r}"
+        for h in chain
+    )
+    # Forbidden tokens = intermediate expected answers. The final (golden)
+    # is NOT forbidden — it's the answer to the question, not an entity in it.
+    forbidden = [h.expected for h in chain[:-1]] if len(chain) > 1 else []
+    forbidden_str = ", ".join(repr(f) for f in forbidden) if forbidden else "(none)"
+    golden = chain[-1].expected
+
+    user_prompt = POLISH_USER.format(
+        chain_summary=chain_summary,
+        golden=golden,
+        draft=draft,
+        forbidden=forbidden_str,
+    )
+
+    def _call() -> str:
+        last_err: Exception | None = None
+        for delay in (0, 5, 15):
+            if delay:
+                time.sleep(delay)
+            try:
+                resp = client.messages.create(
+                    model=model,
+                    max_tokens=512,
+                    temperature=0.3,
+                    system=POLISH_SYSTEM,
+                    messages=[{"role": "user", "content": user_prompt}],
+                )
+                break
+            except (anthropic.InternalServerError, anthropic.APIConnectionError, anthropic.RateLimitError) as e:
+                last_err = e
+        else:
+            raise last_err  # type: ignore[misc]
+        if usage_tracker is not None:
+            u = getattr(resp, "usage", None)
+            if u is not None:
+                usage_tracker["sonnet_in"] = usage_tracker.get("sonnet_in", 0) + (getattr(u, "input_tokens", 0) or 0)
+                usage_tracker["sonnet_out"] = usage_tracker.get("sonnet_out", 0) + (getattr(u, "output_tokens", 0) or 0)
+        return "".join(b.text for b in resp.content if hasattr(b, "text")).strip().strip('"').strip("'")
+
+    polished = _call()
+    # One retry if the model leaked a forbidden token verbatim.
+    if forbidden and any(tok.lower() in polished.lower() for tok in forbidden if tok):
+        polished = _call()
+    # If still leaks, keep the draft (safer than a bad rewrite).
+    if forbidden and any(tok.lower() in polished.lower() for tok in forbidden if tok):
+        return draft
+    return polished
 
 
 COLD_CHECK_MODEL = "claude-haiku-4-5-20251001"
@@ -607,10 +713,19 @@ class IterativeGenerator:
             tool_choice={"type": "tool", "name": "submit_question"},
         )
         self._track(resp, "sonnet")
+        draft = None
         for block in resp.content:
             if getattr(block, "type", None) == "tool_use" and block.name == "submit_question":
-                return chain, (block.input.get("question") or "").strip()
-        return None
+                draft = (block.input.get("question") or "").strip()
+                break
+        if draft is None:
+            return None
+        # Polish pass: BrowseComp-style rewrite — hide intermediate entities
+        # and filter mechanics while keeping the same gold path.
+        polished = polish_question(self.client, chain, draft, usage_tracker=self.usage, model=self.model)
+        if self.verbose and polished != draft:
+            console.print(f"  [dim]polish: {draft[:80]!r} → {polished[:80]!r}[/dim]")
+        return chain, polished
 
     # ── Hop loop (two structured attempts) ──
     def _run_hop_loop(
