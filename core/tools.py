@@ -23,26 +23,26 @@ _EXA_FILTERS: dict = {
             "personal site", "financial report", "people", "pdf",
         ],
     },
-    "startPublishedDate": {
+    "start_published_date": {
         "type": "string",
         "description": (
             "Filter results published after this date "
             "(YYYY-MM-DDTHH:MM:SS.000Z)"
         ),
     },
-    "endPublishedDate": {
+    "end_published_date": {
         "type": "string",
         "description": (
             "Filter results published before this date "
             "(YYYY-MM-DDTHH:MM:SS.000Z)"
         ),
     },
-    "includeDomains": {
+    "include_domains": {
         "type": "array",
         "items": {"type": "string"},
         "description": "Only return results from these domains",
     },
-    "excludeDomains": {
+    "exclude_domains": {
         "type": "array",
         "items": {"type": "string"},
         "description": "Exclude results from these domains",
