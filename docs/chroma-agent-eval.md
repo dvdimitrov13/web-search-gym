@@ -34,8 +34,46 @@ Extractor: same Claude Sonnet 4.5 we use everywhere.
 | v3b lean_searcher (scratchpad off) | **75.8% (25/33)** | 900s | 767 |
 | v3c chroma_agent (search+grep+prune) | 72.7% (24/33) | **578s** | 680 |
 
-Middle of the road on accuracy. **2× faster wall-clock** than v3a — chunked
-highlights keep the per-turn context smaller than summary mode.
+Middle of the road on accuracy, 2× faster wall-clock than v3a. The speedup
+surprised us — it turns out *not* from smaller context (see below).
+
+## Token economy & wall-clock — where the speedup actually comes from
+
+Counter-intuitive finding: chroma's per-turn payload is **larger**, not
+smaller, than lean's.
+
+| | chroma v3c | lean v3b | ratio |
+|---|---:|---:|---:|
+| Wall-clock/task | **41s** | 78s | 0.53× |
+| Assistant turns/task | **3.9** | 5.8 | 0.67× |
+| Searches/task | 2.79 | 3.58 | 0.78× |
+| Per-search tool_result | **~3,700 tok** | ~1,400 tok | **2.6×** |
+| Total tool_result text / task | ~10,500 tok | ~5,000 tok | 2.1× |
+
+Payload math:
+- lean: 5 URLs × 1 Exa summary (~200 words) ≈ 1,400 tok/search
+- chroma: 5 URLs × 5 highlights × 3 sentences each + framing ≈ 3,700 tok/search
+
+Chroma hauls **2× more tool_result text per task** cumulatively. Context
+size is not the lever.
+
+Wall-clock math reconciles exactly to turn count:
+- chroma: 3.9 turns × ~10-11s/turn ≈ 41s ✓
+- lean: 5.8 turns × ~13s/turn ≈ 78s ✓
+
+Two reasons chroma converges in fewer turns:
+
+1. **No scratchpad loop.** Lean used extra turns on "edit constraint table,
+   then search." Chroma has no scratchpad, so those turns don't exist.
+2. **Focused chunks converge faster.** A summary is "this page is about X";
+   25 query-reranked sentences are surgical. On many tasks the model sees
+   the answer literally quoted in a highlight on search 1-2 and submits
+   directly. Less back-and-forth to converge.
+
+**Cost trade**: chroma's message history accumulates ~2× more input tokens
+per call, which is billed but cheap (Sonnet input $3/M). Thinking output
+dominates total cost and was lower here (680 tok/task vs 1,098 on v3a).
+Net: faster, slightly cheaper, same-ish accuracy.
 
 ## Tool usage across 33 traces
 
