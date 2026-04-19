@@ -1,5 +1,5 @@
 name: "claude_sonnet"
 provider: "anthropic"
 model_name: "claude-sonnet-4-5"
-temperature: 0.2
-thinking_budget: null
+temperature: 1.0  # extended thinking requires temperature=1.0
+thinking_budget: 2000

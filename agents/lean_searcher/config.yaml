@@ -6,14 +6,16 @@ agent:
 
 budget:
   max_searches: 5
-  scratchpad_max_tokens: 512
+  scratchpad_max_tokens: 1024
   results_per_query: 5
 
 searcher:
   # Defaults; individual fields can also live on the model config.
   temperature: 0.2
   thinking_budget: null
-  thinking_instruction: true
+  # thinking_instruction is the "think concisely" hint for non-extended-thinking
+  # mode; leave OFF when the model is using extended thinking (thinking_budget>0).
+  thinking_instruction: false
   thinking_passthrough: true
   force_tools: false
   max_nudges: 5

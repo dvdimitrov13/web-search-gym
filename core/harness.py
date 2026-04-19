@@ -235,6 +235,14 @@ class SearcherHarness:
 
             response = self._call_llm(system, call_messages, turn_tools)
 
+            if self.verbose:
+                for b in response.content:
+                    if getattr(b, "type", None) == "thinking":
+                        text = getattr(b, "thinking", "")
+                        preview = " ".join(text.split())[:220]
+                        if preview:
+                            console.print(f"  [magenta]💭 {preview}…[/magenta]")
+
             has_tool_use = any(
                 getattr(b, "type", None) == "tool_use" for b in response.content
             )
