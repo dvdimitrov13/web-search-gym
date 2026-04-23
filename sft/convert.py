@@ -21,6 +21,32 @@ training format. It imports everything structural from `core/`:
   - `core.context` — `exa_api_block`, `live_state_block`, `estimate_tokens`
 
 Any drift between training and inference comes from here. Keep it thin.
+
+─── Thinking-block handling (read this before adding new modes) ─────
+
+Searcher turns contain Anthropic `thinking` blocks when the teacher
+had `thinking_budget` set (Sonnet-4-5 in agent_dd: budget=1024). We
+emit these on the TARGET turn only (`include_thinking=True`) via the
+Qwen3 `reasoning_content` field, which the Qwen3 chat template
+renders as `<think>...</think>`. Prior-turn thinking is stripped
+(`include_thinking=False`) so the student isn't conditioned on
+teacher internals.
+
+Extractor turns (`browse_page` Haiku/Gemma calls) are single-shot
+page-to-bullets extractions. The teacher (Haiku) runs thinking=OFF by
+default. At inference on Gemma 4, the extractor explicitly sets
+`chat_template_kwargs={"enable_thinking": False}` — see
+`core/browse.py::BrowseExtractor._extra_kwargs`. SFT samples for the
+extractor stage must mirror this: `enable_thinking=False` on the
+chat template render, which produces the prefilled `<think></think>`
+skip-block in Gemma's template.
+
+For GEMMA targets specifically: the `reasoning_content` field is a
+Qwen3-ism. Gemma's chat template accepts the same Anthropic-style
+content-block layout through `apply_chat_template`, but the render is
+controlled by `chat_template_kwargs={"enable_thinking": True/False}`.
+Set True for searcher samples, False for extractor samples — per-
+sample control is required because they mix in one JSONL.
 """
 
 from __future__ import annotations

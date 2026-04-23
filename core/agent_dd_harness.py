@@ -27,7 +27,7 @@ from datetime import date
 
 import anthropic
 
-from core.browse import HaikuBrowseExtractor
+from core.browse import BrowseExtractor
 from core.console import console
 from core.context import estimate_tokens, live_state_block
 from core.exa_client import ExaClient
@@ -131,7 +131,7 @@ class AgentDDHarness:
         self.exa = exa_client or ExaClient(
             num_results=results_per_query, search_type=exa_search_type,
         )
-        self.browse_extractor = HaikuBrowseExtractor(
+        self.browse_extractor = BrowseExtractor(
             model=browse_extractor_model,
             max_tokens=browse_extractor_max_tokens,
             provider=browse_extractor_provider,
@@ -647,7 +647,7 @@ class AgentDDHarness:
             # Always pull full-page text alongside highlights — no cap —
             # so browse_page can read from the cache without any external
             # fetch. If a page is truly huge, the Haiku extractor caps
-            # its own input (max_page_chars in HaikuBrowseExtractor).
+            # its own input (max_page_chars in BrowseExtractor).
             results = await self.exa.search_highlights_async(
                 query,
                 num_results=self.results_per_query,

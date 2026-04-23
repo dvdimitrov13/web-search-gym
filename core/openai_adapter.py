@@ -191,6 +191,11 @@ def _build_kwargs(**anthropic_kwargs) -> dict:
     if tools:
         kwargs["tools"] = _tools_to_openai(tools)
         kwargs["tool_choice"] = "auto"
+    # Pass through OpenAI-only extensions (e.g. vLLM chat_template_kwargs for
+    # per-request Gemma4 enable_thinking toggle). Callers opt in explicitly.
+    extra_body = anthropic_kwargs.get("extra_body")
+    if extra_body:
+        kwargs["extra_body"] = extra_body
     return kwargs
 
 

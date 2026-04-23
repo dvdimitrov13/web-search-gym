@@ -107,12 +107,18 @@ def fetch_webpage_jina(
     }
 
 
-class HaikuBrowseExtractor:
-    """Haiku-backed page-content cleaner. One call per URL.
+class BrowseExtractor:
+    """Model-agnostic page-content cleaner. One call per URL.
 
-    Exposes both `extract` (sync) and `extract_async` (async). The async
-    form lets the agent_dd harness fan out multiple browse_page calls in one
-    turn via `asyncio.gather` without spinning up a thread per call.
+    Works with any model reachable through our Anthropic-shaped client
+    (Anthropic direct, OpenRouter, or our OpenAI shim for vLLM). The
+    default model happens to be Haiku for historical reasons, but the
+    class is intentionally named without that coupling.
+
+    Thinking handling: for reasoning-by-default models (Gemma 4, etc.)
+    we force `enable_thinking=False` via `extra_body` when the backend
+    speaks OpenAI. Otherwise the extractor would do the work inside the
+    reasoning channel and return empty visible output.
     """
 
     def __init__(
@@ -133,6 +139,10 @@ class HaikuBrowseExtractor:
         self.model = model
         self.max_tokens = max_tokens
         self.max_page_chars = max_page_chars
+        # Thinking-capable OpenAI-shaped backends (vLLM serving Gemma 4 etc.)
+        # need an explicit per-call override; extraction is not a reasoning
+        # task and enabling thinking hides output in the stripped channel.
+        self._suppress_thinking = is_openai_compat(provider)
 
     @property
     def async_client(self) -> anthropic.AsyncAnthropic:
@@ -175,6 +185,13 @@ class HaikuBrowseExtractor:
             "cache_read_input_tokens": getattr(u, "cache_read_input_tokens", 0) or 0,
         }
 
+    def _extra_kwargs(self) -> dict:
+        if not self._suppress_thinking:
+            return {}
+        # Only our OpenAI shim understands `extra_body` — the Anthropic SDK
+        # would reject it. Guarded above on provider.
+        return {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
+
     def extract(
         self, *, url: str, title: str, question: str, content: str,
     ) -> tuple[str, dict]:
@@ -184,6 +201,7 @@ class HaikuBrowseExtractor:
             model=self.model,
             max_tokens=self.max_tokens,
             messages=[{"role": "user", "content": prompt}],
+            **self._extra_kwargs(),
         )
         return self._extract_text(resp), self._usage_dict(resp)
 
@@ -196,6 +214,7 @@ class HaikuBrowseExtractor:
             model=self.model,
             max_tokens=self.max_tokens,
             messages=[{"role": "user", "content": prompt}],
+            **self._extra_kwargs(),
         )
         return self._extract_text(resp), self._usage_dict(resp)
 
@@ -203,7 +222,7 @@ class HaikuBrowseExtractor:
 def browse_and_extract(
     url: str,
     question: str,
-    extractor: HaikuBrowseExtractor,
+    extractor: BrowseExtractor,
     jina_api_key: str | None = None,
 ) -> dict:
     """Full browse pipeline: Jina Reader fetch → Haiku extractive cleanup.
