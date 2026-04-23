@@ -742,6 +742,10 @@ class AgentDDHarness:
             "type": "browse",
             "question": question,
             "usage": extractor_usage,
+            # Persisted so the extractor stage can be replayed as an SFT
+            # sample: (question, url, title, page_content) → extracted.
+            # Without this we'd have to re-fetch pages that may have drifted.
+            "page_content": cached["text"],
         }
         if self.verbose:
             console.print(
