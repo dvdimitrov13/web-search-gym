@@ -34,6 +34,7 @@ from core.exa_client import ExaClient
 from core.harness import _fuzzy_replace  # reuse lean's scratchpad fuzzy matcher
 from core.agent_dd_prompts import AGENT_DD_SYSTEM_PROMPT
 from core.agent_dd_tools import AGENT_DD_ANTHROPIC_TOOLS
+from core.openai_adapter import AnthropicShim, is_openai_compat
 from core.trace import SubmittedUrl, Trace, TraceMetadata, TurnState
 from core.types import Answer, RetryableAgentError, Task
 
@@ -45,12 +46,18 @@ def _make_client(
     provider: str,
     base_url: str = "",
     api_key_env: str = "",
-) -> anthropic.Anthropic:
+):
     if provider == "openrouter":
         return anthropic.Anthropic(
             base_url=_OPENROUTER_BASE,
             api_key=os.environ["OPENROUTER_API_KEY"],
         )
+    if is_openai_compat(provider):
+        # Self-hosted vLLM (and similar) speaks OpenAI Chat Completions —
+        # wrap it so the harness can keep calling `.messages.create(...)`.
+        resolved_url = os.path.expandvars(base_url) if base_url else ""
+        key = os.environ.get(api_key_env, "none") if api_key_env else "none"
+        return AnthropicShim(base_url=resolved_url, api_key=key)
     if base_url:
         return anthropic.Anthropic(
             base_url=os.path.expandvars(base_url),

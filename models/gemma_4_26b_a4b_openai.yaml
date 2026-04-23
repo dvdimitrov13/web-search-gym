@@ -1,0 +1,9 @@
+name: "gemma_4_26b_a4b_openai"
+provider: "openai"
+model_name: "google/gemma-4-26b-a4b-it"
+# OpenRouter also exposes an OpenAI-compatible endpoint at /api/v1 — lets us
+# validate the OpenAI translation shim before spending on self-hosted GPU.
+base_url: "https://openrouter.ai/api/v1"
+api_key_env: "OPENROUTER_API_KEY"
+temperature: 0.2
+force_tools: true

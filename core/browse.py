@@ -19,17 +19,18 @@ import os
 import anthropic
 import requests
 
+from core.openai_adapter import AnthropicShim, AsyncAnthropicShim, is_openai_compat
+
 _OPENROUTER_BASE = "https://openrouter.ai/api"
 
 
 def _make_clients(
     provider: str, base_url: str, api_key_env: str,
-) -> tuple[anthropic.Anthropic, anthropic.AsyncAnthropic]:
+):
     """Build (sync, async) Anthropic-compatible client pair for the provider.
 
-    Duplicates the _make_client pattern in agent_dd_harness.py so browse.py
-    can serve different backends (Anthropic direct, OpenRouter, local vLLM)
-    for extractor SFT baselines.
+    For OpenAI-compatible backends (vLLM, etc.) this returns our translation
+    shims so callers can keep using Anthropic-shaped `.messages.create(...)`.
     """
     if provider == "openrouter":
         return (
@@ -41,6 +42,13 @@ def _make_clients(
                 base_url=_OPENROUTER_BASE,
                 api_key=os.environ["OPENROUTER_API_KEY"],
             ),
+        )
+    if is_openai_compat(provider):
+        resolved_url = os.path.expandvars(base_url) if base_url else ""
+        key = os.environ.get(api_key_env, "none") if api_key_env else "none"
+        return (
+            AnthropicShim(base_url=resolved_url, api_key=key),
+            AsyncAnthropicShim(base_url=resolved_url, api_key=key),
         )
     if base_url:
         resolved_url = os.path.expandvars(base_url)
