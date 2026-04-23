@@ -96,6 +96,9 @@ class AgentDDHarness:
         exa_search_type: str | None = "instant",
         browse_extractor_model: str = "claude-haiku-4-5-20251001",
         browse_extractor_max_tokens: int = 320,
+        browse_extractor_provider: str = "anthropic",
+        browse_extractor_base_url: str = "",
+        browse_extractor_api_key_env: str = "",
         scratchpad_max_tokens: int = 1024,
         max_shrink_attempts: int = 2,
         max_nudges: int = 3,
@@ -122,6 +125,9 @@ class AgentDDHarness:
         self.browse_extractor = HaikuBrowseExtractor(
             model=browse_extractor_model,
             max_tokens=browse_extractor_max_tokens,
+            provider=browse_extractor_provider,
+            base_url=browse_extractor_base_url,
+            api_key_env=browse_extractor_api_key_env,
         )
 
     # ── Public entry ────────────────────────────────────────────────

@@ -1,0 +1,14 @@
+name: "gemma_4_26b_a4b"
+provider: "openrouter"
+model_name: "google/gemma-4-26b-a4b-it"
+temperature: 0.2
+# MoE: 26B total params / ~4B active per token. Acts as a proxy for a
+# dense-4B Gemma 4 (which Google did not expose on OpenRouter) — similar
+# inference compute cost, larger knowledge capacity.
+#
+# Set OPENROUTER_API_KEY in .env.
+#
+# Gemma on OpenRouter often needs force_tools to reliably emit tool_use
+# blocks (mirrors Qwen3). agent_dd's nudge loop already force-funnels
+# missing tool calls, so this is belt-and-suspenders.
+force_tools: true

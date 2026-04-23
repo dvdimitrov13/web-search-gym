@@ -19,6 +19,38 @@ import os
 import anthropic
 import requests
 
+_OPENROUTER_BASE = "https://openrouter.ai/api"
+
+
+def _make_clients(
+    provider: str, base_url: str, api_key_env: str,
+) -> tuple[anthropic.Anthropic, anthropic.AsyncAnthropic]:
+    """Build (sync, async) Anthropic-compatible client pair for the provider.
+
+    Duplicates the _make_client pattern in agent_dd_harness.py so browse.py
+    can serve different backends (Anthropic direct, OpenRouter, local vLLM)
+    for extractor SFT baselines.
+    """
+    if provider == "openrouter":
+        return (
+            anthropic.Anthropic(
+                base_url=_OPENROUTER_BASE,
+                api_key=os.environ["OPENROUTER_API_KEY"],
+            ),
+            anthropic.AsyncAnthropic(
+                base_url=_OPENROUTER_BASE,
+                api_key=os.environ["OPENROUTER_API_KEY"],
+            ),
+        )
+    if base_url:
+        resolved_url = os.path.expandvars(base_url)
+        key = os.environ.get(api_key_env, "none") if api_key_env else "none"
+        return (
+            anthropic.Anthropic(base_url=resolved_url, api_key=key),
+            anthropic.AsyncAnthropic(base_url=resolved_url, api_key=key),
+        )
+    return anthropic.Anthropic(), anthropic.AsyncAnthropic()
+
 _HAIKU_EXTRACT_PROMPT = """You are a research assistant extracting evidence from a webpage.
 
 Research question: {question}
@@ -80,19 +112,22 @@ class HaikuBrowseExtractor:
         model: str = "claude-haiku-4-5-20251001",
         max_tokens: int = 320,  # ~256 tokens + small overhead margin
         max_page_chars: int = 128000,  # ~32k input tokens (4 chars/tok heuristic)
+        provider: str = "anthropic",
+        base_url: str = "",
+        api_key_env: str = "",
     ):
-        self.client = anthropic.Anthropic()
-        # Lazy — only created when `extract_async` is first called, so sync-
-        # only callers don't pay for two client instances.
-        self._async_client: anthropic.AsyncAnthropic | None = None
+        # Eagerly build both clients — cheap, and the async path is nearly
+        # always used by agent_dd. Keeps the provider-switching logic in one
+        # place rather than duplicated between sync and async lazy getters.
+        self.client, self._async_client = _make_clients(
+            provider, base_url=base_url, api_key_env=api_key_env,
+        )
         self.model = model
         self.max_tokens = max_tokens
         self.max_page_chars = max_page_chars
 
     @property
     def async_client(self) -> anthropic.AsyncAnthropic:
-        if self._async_client is None:
-            self._async_client = anthropic.AsyncAnthropic()
         return self._async_client
 
     def _build_prompt(self, *, url: str, title: str, question: str, content: str) -> str:
