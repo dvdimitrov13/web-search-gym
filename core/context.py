@@ -52,20 +52,31 @@ def live_state_block(
     max_searches: int,
     scratchpad: str,
     scratchpad_max_tokens: int,
+    label: str = "searches",
+    searches_issued: int | None = None,
 ) -> str:
     """Per-turn <budget> + <scratchpad> block.
 
     Appended to the last user message (NOT the system prompt) so the system
     prompt stays cacheable across turns and the live state sits right next to
     the model's generation point.
+
+    `label` lets callers swap the budget unit — e.g. "search cycles" for a
+    harness that allows parallel searches within a turn. `searches_issued`,
+    if set, is shown alongside cycles so the model sees both counters.
     """
     scratchpad_tokens = estimate_tokens(scratchpad)
-    searches_remaining = max_searches - search_count
+    remaining = max_searches - search_count
     scratchpad_remaining = max(0, scratchpad_max_tokens - scratchpad_tokens)
+    extra = (
+        f" · {searches_issued} search call(s) issued so far"
+        if searches_issued is not None
+        else ""
+    )
     return (
         "<budget>\n"
-        f"searches: {search_count}/{max_searches} used "
-        f"({searches_remaining} remaining)\n"
+        f"{label}: {search_count}/{max_searches} used "
+        f"({remaining} remaining){extra}\n"
         f"commit_memory: ~{scratchpad_tokens}/{scratchpad_max_tokens} tokens used "
         f"(~{scratchpad_remaining} remaining)\n"
         "</budget>\n\n"

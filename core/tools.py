@@ -56,13 +56,32 @@ CANONICAL_TOOLS = {
         "description": (
             "Search the web using Exa's neural search engine. "
             "Returns relevant web pages with titles, URLs, and summaries. "
-            "Pass 'query' (required) plus any optional Exa filters as a flat "
-            "JSON object."
+            "Two query fields control retrieval and summarization separately: "
+            "`query` picks which URLs come back; `summary_query` (optional) "
+            "shapes the per-URL summary. If summary_query is omitted the "
+            "search query is used for both. Use a distinct summary_query when "
+            "you want to retrieve BROAD (big candidate pool) but extract "
+            "NARROW (specific fact, person, date, quantity). Example: "
+            "query='Manoj Bajpayee filmography', "
+            "summary_query='son gets a plaster cast'."
         ),
         "properties": {
             "query": {
                 "type": "string",
-                "description": "Search query. Be specific and detailed.",
+                "description": (
+                    "Retrieval query. Controls which URLs Exa returns. "
+                    "Be specific and detailed."
+                ),
+            },
+            "summary_query": {
+                "type": "string",
+                "description": (
+                    "Optional. Controls what each per-URL summary focuses on "
+                    "(not which URLs are returned). Default: same as `query`. "
+                    "Use a distinct summary_query when the search needs to cast "
+                    "a wide net but the summary should extract one specific "
+                    "detail."
+                ),
             },
             **_EXA_FILTERS,
         },

@@ -42,17 +42,26 @@ class SourceInfo:
 
 @dataclass
 class Answer:
-    """The extractor's final answer to a BrowseComp-style task."""
+    """The agent's final answer.
+
+    `explanation` / `exact_answer` / `confidence` follow the BrowseComp format
+    and are what short-answer graders read. `natural_text`, if set, is the
+    agent's raw prose answer — used by graders that don't want extraction
+    (e.g. DeepSearchQA, where Set Answer tasks need a full entity list, not
+    a single line).
+    """
 
     explanation: str
     exact_answer: str
     confidence: int  # 0-100
+    natural_text: str = ""
 
     def to_dict(self) -> dict:
         return {
             "explanation": self.explanation,
             "exact_answer": self.exact_answer,
             "confidence": self.confidence,
+            "natural_text": self.natural_text,
         }
 
 

@@ -23,8 +23,12 @@ evaluated on BrowseComp.
    new model means one YAML in `models/`, not a new agent directory.
 4. **Scratchpad tool returns status only.** Never inline full scratchpad content
    into tool results (the `<scratchpad>` system block shows it).
-5. **Exa client uses `search(contents={"summary": {"query": query}})` only.**
-   No `highlights`, no `get_contents` with a different query.
+5. **Exa client uses `search(contents={"summary": {...}})` only** — never swap
+   the content shape (no `highlights`, no `text`, no `get_contents`) for the
+   lean_searcher path. The summary query may differ from the search query via
+   `summary_query`; both single-query and split-query forms are in-contract
+   because the tool schema exposes `summary_query` and training data captures
+   whichever the model used.
 6. **Source bank is a first-class Trace field.** Never re-fetch content; downstream
    stages read from the Trace.
 
@@ -66,6 +70,11 @@ uv run python -m synth.gold_path_generation --mode test --seed 456
 
 ## Current state
 
-Scaffold + filterbench v3 generator (33-question test set). lean_searcher and
-three exa_deep tiers (deep-lite / deep / deep-reasoning) available as
-baselines. No agents trained yet.
+Scaffold + filterbench v3 generator (33-question test set) + DeepSearchQA
+(Google's 900-task multi-step research bench) wired as a dataset option
+with its official gemini-2.5-flash autorater. lean_searcher, three
+exa_deep tiers, chroma_agent, and `agent_dd` (single-rollout DR-Tulu-style
+harness with search/browse_page/commit_memory/answer) available as
+baselines. Best on DSQA domain2 (32 tasks): agent_dd 8-cycle + commit_memory
+at 43.8% fully-correct / 50.4% F1 — see docs/agent-dd-dsqa.md. No agents
+trained yet.

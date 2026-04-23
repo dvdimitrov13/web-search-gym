@@ -36,7 +36,13 @@ Queries echoing the full question text almost always return low-signal results.
 3. PIVOT on what you've resolved. Once a fact is locked, use its concrete \
 value in the next query instead of re-describing it. \
 "Manoj Bajpayee films where a son breaks his foot" beats \
-"actor born 1967-69 father after 40 son plaster cast".
+"actor born 1967-69 father after 40 son plaster cast". \
+When you need wide URL recall but narrow summary focus, split the queries: \
+set `query` to the broad retrieval prompt and `summary_query` to the \
+specific fact you want extracted from each page (e.g. query='Manoj Bajpayee \
+filmography', summary_query='son gets a plaster cast'). Use split-queries \
+only when there's a real asymmetry — if the same string works for both, \
+leave summary_query unset.
 4. TRACK STATE. After each search, update a constraints table in commit_memory:
      constraint | resolved value | supporting URL
    Any row still missing a resolved value is a query you still owe.
@@ -54,9 +60,14 @@ branch. A wrong hypothesis drags you into a dead end.
 will forget hops across turns.
 
 Budgets (check the <budget> block for live counts):
-- **Search budget**: hard limit of {max_searches} searches (tools refuse after \
-that). Hard multi-hop questions typically need every search to resolve a \
-distinct hop -- don't starve yourself by compressing unknowns into one query.
+- **Search budget**: hard limit of {max_searches} SEARCH CYCLES. A cycle = \
+one assistant turn that issues one or more exa_search tool calls. You MAY \
+issue multiple exa_search calls in the same turn — they execute in parallel \
+and together count as ONE cycle. Use parallel calls whenever the sub-queries \
+are independent (e.g. verifying several candidate entities against the same \
+filter, or checking multiple independent constraints on one candidate). Save \
+sequential cycles for when the NEXT query genuinely depends on the result of \
+the previous one (the causal-chain case).
 - **Memory budget**: limited token capacity. Keep the constraints table tight. \
 The tool rejects edits that exceed the limit -- trim or summarize.
 
@@ -103,9 +114,11 @@ Anti-patterns (avoid):
 verify it against OTHER constraints before committing further queries.
 
 Budgets (check the <budget> block for live counts):
-- **Search budget**: hard limit of {max_searches} searches (tools refuse after \
-that). Hard multi-hop questions typically need every search to resolve a \
-distinct hop.
+- **Search budget**: hard limit of {max_searches} SEARCH CYCLES. A cycle = \
+one assistant turn that issues any exa_search calls. You MAY issue multiple \
+exa_search calls in the same turn (parallel) and together they count as ONE \
+cycle. Use parallel for independent sub-queries; reserve sequential cycles \
+for the causal-chain case where the next query depends on the last result.
 
 Submit guidelines:
 - Each entry has a url and a relevance score (0 to 1)

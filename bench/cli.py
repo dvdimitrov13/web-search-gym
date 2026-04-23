@@ -82,10 +82,11 @@ def list_models():
 @click.option("--searcher-model", default=None, help="Override searcher-stage model")
 @click.option("--extractor-model", default=None, help="Override extractor-stage model")
 @click.option("--dataset", "-d", default="browsecomp",
-              type=click.Choice(["browsecomp", "filterbench"]),
+              type=click.Choice(["browsecomp", "filterbench", "deepsearchqa"]),
               help="Dataset (default: browsecomp)")
 @click.option("--split", "-s", default="dev",
-              help="BrowseComp split (dev|smoke|full) or filterbench split (dev|test)")
+              help="BrowseComp split (dev|smoke|full), filterbench (dev|test), "
+                   "deepsearchqa (dev|smoke|domain2|full)")
 @click.option("--indices", default=None, help="Comma-separated row indices (overrides --split)")
 @click.option("--concurrent", "-c", default=1, help="Max concurrent tasks")
 @click.option("--run-id", default=None, help="Run ID (default: timestamp)")
@@ -106,18 +107,30 @@ def run_cmd(agent, model, searcher_model, extractor_model, dataset, split, indic
         extractor_model=extractor_model,
     )
 
+    grader = None
     if dataset == "browsecomp":
         from bench.browsecomp import load_tasks
         tasks = load_tasks(indices=idx_list if idx_list is not None else _load_split_indices(split))
-    else:
+    elif dataset == "filterbench":
         from bench.filterbench import load_tasks as load_filter
         tasks = load_filter(split=split, indices=idx_list)
+    elif dataset == "deepsearchqa":
+        from bench.deepsearchqa import DSQAGrader, load_tasks as load_dsqa
+        tasks = load_dsqa(split=split, indices=idx_list)
+        grader = DSQAGrader()
+    else:
+        raise click.UsageError(f"Unknown dataset: {dataset}")
 
     if not tasks:
         console.print("[yellow]No tasks to run.[/yellow]")
         return
 
-    run_bench(agent_inst, tasks, run_id=run_id, max_concurrent=concurrent)
+    # Tag tasks with the dataset so agents can adapt (e.g. skip extractor
+    # for graders that want a full prose answer rather than a short extract).
+    for t in tasks:
+        t.metadata["dataset"] = dataset
+
+    run_bench(agent_inst, tasks, run_id=run_id, max_concurrent=concurrent, grader=grader)
 
 
 @main.command("leaderboard")

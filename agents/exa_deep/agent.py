@@ -109,6 +109,23 @@ class ExaDeepAgent(BaseAgent):
         if not results.synthesis and not results.sources:
             console.print("  [red]No synthesis and no sources — extractor will see nothing[/red]")
 
+        # DeepSearchQA (and any grader that wants prose) reads a full natural
+        # response. Skip the extractor — its single-line `Exact Answer:` field
+        # collapses Set Answer enumerations. We still stash the synthesis on
+        # all three legacy fields so short-answer tooling keeps working.
+        if task.metadata.get("dataset") == "deepsearchqa" and results.synthesis:
+            elapsed = time.time() - t0
+            console.print(
+                f"  [green]Done (no-extract)[/green] — {len(results.sources)} sources, "
+                f"synthesis={len(results.synthesis)} chars, {elapsed:.1f}s"
+            )
+            return Answer(
+                explanation=results.synthesis,
+                exact_answer=results.synthesis,
+                confidence=80,
+                natural_text=results.synthesis,
+            )
+
         # When we have Exa's synthesis, feed only that to the extractor — the
         # per-URL source_bank has no content (we skipped per-page summaries).
         answer = self.extractor.extract(
@@ -116,6 +133,7 @@ class ExaDeepAgent(BaseAgent):
             sources=[] if results.synthesis else results.sources,
             synthesis=results.synthesis,
         )
+        answer.natural_text = results.synthesis
         elapsed = time.time() - t0
         console.print(
             f"  [green]Done[/green] — {len(results.sources)} sources, "

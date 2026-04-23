@@ -63,6 +63,7 @@ class LeanSearcherAgent(BaseAgent):
             max_nudges=searcher_cfg.get("max_nudges", 5),
             max_shrink_attempts=searcher_cfg.get("max_shrink_attempts", 2),
             use_scratchpad=searcher_cfg.get("use_scratchpad", True),
+            exa_search_type=searcher_cfg.get("exa_search_type"),
             verbose=self.config.get("verbose", False),
         )
 

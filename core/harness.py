@@ -181,6 +181,7 @@ class SearcherHarness:
         use_scratchpad: bool = True,
         verbose: bool = False,
         exa_client: ExaClient | None = None,
+        exa_search_type: str | None = None,
     ):
         self.client = make_client(provider, base_url=base_url, api_key_env=api_key_env)
         self.searcher_model = searcher_model
@@ -197,7 +198,9 @@ class SearcherHarness:
         self.max_shrink_attempts = max_shrink_attempts
         self.verbose = verbose
 
-        self.exa = exa_client or ExaClient(num_results=results_per_query)
+        self.exa = exa_client or ExaClient(
+            num_results=results_per_query, search_type=exa_search_type,
+        )
 
     # ── Public entry point ──────────────────────────────────────────
 
@@ -216,7 +219,12 @@ class SearcherHarness:
         ]
 
         scratchpad = ""
+        # Cycle-based budget: `search_count` is CYCLES USED (assistant turns
+        # that issued ≥1 non-error exa_search). Parallel exa_search calls
+        # within one turn share a single cycle. `searches_issued` is the raw
+        # count of individual calls, kept for trace metadata & cost analysis.
         search_count = 0
+        searches_issued = 0
         nudge_count = 0
         submitted: list[SubmittedUrl] = []
         source_bank: dict[str, dict] = {}
@@ -228,7 +236,7 @@ class SearcherHarness:
 
         for _ in range(max_iterations):
             call_messages = self._inject_live_state(
-                messages, search_count, scratchpad
+                messages, search_count, scratchpad, searches_issued=searches_issued,
             )
 
             # When the scratchpad is over budget, restrict tools to scratchpad
@@ -289,6 +297,7 @@ class SearcherHarness:
             tool_results, done, updates = self._dispatch_tools(
                 response,
                 search_count=search_count,
+                searches_issued=searches_issued,
                 scratchpad=scratchpad,
                 must_shrink=must_shrink,
                 shrink_attempts=shrink_attempts,
@@ -296,6 +305,7 @@ class SearcherHarness:
                 submitted=submitted,
             )
             search_count = updates["search_count"]
+            searches_issued = updates["searches_issued"]
             scratchpad = updates["scratchpad"]
             must_shrink = updates["must_shrink"]
             shrink_attempts = updates["shrink_attempts"]
@@ -316,6 +326,7 @@ class SearcherHarness:
             submitted=submitted,
             metadata=TraceMetadata(
                 search_count=search_count,
+                searches_issued=searches_issued,
                 nudge_count=nudge_count,
                 elapsed_seconds=round(elapsed, 2),
                 stop_reason=stop_reason,
@@ -341,7 +352,12 @@ class SearcherHarness:
         return system
 
     def _inject_live_state(
-        self, messages: list[dict], search_count: int, scratchpad: str
+        self,
+        messages: list[dict],
+        search_count: int,
+        scratchpad: str,
+        *,
+        searches_issued: int | None = None,
     ) -> list[dict]:
         """Append live <budget>+<scratchpad> text to the last user message.
 
@@ -353,6 +369,8 @@ class SearcherHarness:
             max_searches=self.max_searches,
             scratchpad=scratchpad,
             scratchpad_max_tokens=self.scratchpad_max_tokens,
+            label="search cycles",
+            searches_issued=searches_issued,
         )
         call_messages = list(messages)
         # Strip thinking blocks from older assistant turns so thinking stays
@@ -422,15 +440,24 @@ class SearcherHarness:
         response,
         *,
         search_count: int,
+        searches_issued: int,
         scratchpad: str,
         must_shrink: bool,
         shrink_attempts: int,
         source_bank: dict[str, dict],
         submitted: list[SubmittedUrl],
     ) -> tuple[list[dict], bool, dict]:
-        """Execute all tool_use blocks from a response. Returns (tool_results, done, updates)."""
+        """Execute all tool_use blocks from a response. Returns (tool_results, done, updates).
+
+        Cycle semantics: `search_count` = cycles used. Multiple parallel
+        exa_search blocks in ONE response all see the same pre-dispatch
+        `search_count` in `_handle_exa`, so they all succeed or all fail
+        against the same budget gate. After dispatch, if any non-error
+        exa_search was issued, `search_count` increments by exactly 1.
+        """
         tool_results: list[dict] = []
         done = False
+        any_exa_success = False
 
         for block in response.content:
             if getattr(block, "type", None) != "tool_use":
@@ -442,9 +469,9 @@ class SearcherHarness:
                         block, search_count=search_count, source_bank=source_bank,
                     )
                 )
-                # Count only non-rejected searches.
                 if not tool_results[-1].get("is_error"):
-                    search_count += 1
+                    any_exa_success = True
+                    searches_issued += 1
 
             elif block.name == "commit_memory":
                 tr, scratchpad, must_shrink, shrink_attempts = (
@@ -496,8 +523,13 @@ class SearcherHarness:
                     )
                 done = True
 
+        # One cycle = one response containing ≥1 non-error exa_search.
+        if any_exa_success:
+            search_count += 1
+
         return tool_results, done, {
             "search_count": search_count,
+            "searches_issued": searches_issued,
             "scratchpad": scratchpad,
             "must_shrink": must_shrink,
             "shrink_attempts": shrink_attempts,
@@ -515,16 +547,21 @@ class SearcherHarness:
                 "type": "tool_result",
                 "tool_use_id": block.id,
                 "content": (
-                    f"REJECTED: Search budget exhausted "
-                    f"({search_count}/{self.max_searches} used). "
+                    f"REJECTED: Search-cycle budget exhausted "
+                    f"({search_count}/{self.max_searches} cycles used). "
                     "You must call submit now with your collected URLs."
                 ),
                 "is_error": True,
             }
         query = block.input.get("query", "")
-        filters = {k: v for k, v in block.input.items() if k != "query"}
+        summary_query = block.input.get("summary_query")
+        # Everything except the two query fields becomes an Exa filter.
+        filters = {
+            k: v for k, v in block.input.items()
+            if k not in ("query", "summary_query")
+        }
         try:
-            results = self.exa.search(query, **filters)
+            results = self.exa.search(query, summary_query=summary_query, **filters)
         except Exception as e:
             return {
                 "type": "tool_result",
@@ -538,7 +575,7 @@ class SearcherHarness:
                 source_bank[s.url] = s.to_dict()
         if self.verbose:
             console.print(
-                f"  [cyan]Search {search_count + 1}/{self.max_searches}:[/cyan] "
+                f"  [cyan]Search (cycle {search_count + 1}/{self.max_searches}):[/cyan] "
                 f"[dim]{query[:90]}[/dim] ({len(results.sources)} results)"
             )
         return {

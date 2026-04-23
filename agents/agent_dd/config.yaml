@@ -1,0 +1,36 @@
+agent:
+  name: "agent_dd"
+  display_name: "Agent DD"
+  description: "Single-agent DR Tulu-style harness: Exa highlights + Haiku browse_page + native answer tool (no separate extractor)."
+  version: "0.1.0"
+
+budget:
+  # Hard cap on search-or-browse cycles per task. Parallel calls in one turn
+  # share a cycle. `answer` does not consume a cycle.
+  max_cycles: 8
+  results_per_query: 5
+  highlights_per_url: 3
+  highlight_max_chars: 200
+  # Full-page text is always fetched alongside highlights (no cap) so
+  # browse_page can read from the cache without a network round-trip.
+  # The Haiku extractor caps its own input for long pages.
+
+searcher:
+  temperature: 0.2
+  thinking_budget: null
+  thinking_passthrough: false
+  # Exa retrieval tier. "instant" is ~180ms; "auto" is slower but higher quality.
+  exa_search_type: instant
+  max_nudges: 3
+  # Persistent commit_memory scratchpad — free, does not consume a cycle.
+  # Over-budget turns lock the agent into commit_memory-only until shrunk.
+  scratchpad_max_tokens: 1024
+  max_shrink_attempts: 2
+
+browse:
+  # Haiku extractor pulls raw page text from Jina Reader and condenses to
+  # ~256 dense tokens focused on the caller's question.
+  extractor_model: "claude-haiku-4-5-20251001"
+  extractor_max_tokens: 320
+
+verbose: true

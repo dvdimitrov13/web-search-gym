@@ -29,7 +29,13 @@ class SubmittedUrl:
 
 @dataclass
 class TraceMetadata:
+    # `search_count` now tracks search CYCLES used (assistant turns that
+    # issued any exa_search). `searches_issued` is the raw count of
+    # individual exa_search calls, which may exceed cycles when the model
+    # parallelized within a turn. Older traces without `searches_issued`
+    # default to 0 on load.
     search_count: int = 0
+    searches_issued: int = 0
     nudge_count: int = 0
     elapsed_seconds: float = 0.0
     stop_reason: str = ""  # "submit" | "no_tool" | "nudge_exhausted" | "error"

@@ -20,6 +20,10 @@ searcher:
   force_tools: false
   # Ablation: set false to drop the scratchpad tool entirely (v3b).
   use_scratchpad: true
+  # Exa retrieval backend: null → auto (default). "instant" / "fast" /
+  # "neural" / "keyword" pin a specific tier. `deep*` tiers go via exa_deep,
+  # not here.
+  exa_search_type: instant
   max_nudges: 5
   max_shrink_attempts: 2
 

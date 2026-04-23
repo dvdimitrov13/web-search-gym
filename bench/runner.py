@@ -47,6 +47,7 @@ class TaskRecord:
     is_correct: bool
     judge_raw: str
     error: str | None = None
+    metrics: dict | None = None  # grader-specific per-task metrics (e.g. DSQA p/r/f1)
 
     def to_dict(self) -> dict:
         return {
@@ -57,6 +58,7 @@ class TaskRecord:
             "is_correct": self.is_correct,
             "judge_raw": self.judge_raw,
             "error": self.error,
+            "metrics": self.metrics,
         }
 
 
@@ -70,7 +72,23 @@ def _answer_with_retry(agent: BaseAgent, task: Task) -> Answer:
         return agent.answer(task)
 
 
-def _process_task(agent: BaseAgent, task: Task, grader: Grader) -> TaskRecord:
+def _grade(grader, task: Task, response_text: str):
+    """Grader-agnostic dispatch.
+
+    BrowseComp's Grader.grade(question, answer, response) → GradeResult.
+    Other graders (DSQA) take the Task and response directly so they can use
+    metadata like `answer_type`. We sniff the signature by trying the Task-
+    based form first and falling back to the 3-arg form.
+    """
+    if hasattr(grader, "grade"):
+        try:
+            return grader.grade(task, response_text)  # DSQAGrader-style
+        except TypeError:
+            return grader.grade(task.question, task.answer or "", response_text)
+    raise TypeError(f"Grader {type(grader).__name__} has no .grade method")
+
+
+def _process_task(agent: BaseAgent, task: Task, grader) -> TaskRecord:
     try:
         ans = _answer_with_retry(agent, task)
     except Exception as e:
@@ -83,8 +101,15 @@ def _process_task(agent: BaseAgent, task: Task, grader: Grader) -> TaskRecord:
             judge_raw="",
             error=f"{type(e).__name__}: {e}\n{traceback.format_exc()}",
         )
-    response_text = answer_to_browsecomp_text(ans)
-    grade: GradeResult = grader.grade(task.question, task.answer or "", response_text)
+    # If the agent provided a prose answer AND the grader prefers prose
+    # (DSQA-style), pass that directly; otherwise fall back to the
+    # BrowseComp-formatted text that short-answer graders expect.
+    prefers_prose = getattr(grader, "prefers_natural_response", False)
+    if prefers_prose and ans.natural_text:
+        response_text = ans.natural_text
+    else:
+        response_text = answer_to_browsecomp_text(ans)
+    grade = _grade(grader, task, response_text)
     return TaskRecord(
         idx=task.idx,
         question=task.question,
@@ -92,6 +117,7 @@ def _process_task(agent: BaseAgent, task: Task, grader: Grader) -> TaskRecord:
         agent_answer=ans.to_dict(),
         is_correct=grade.is_correct,
         judge_raw=grade.raw_judge_output,
+        metrics=getattr(grade, "metrics", None),
     )
 
 
@@ -115,7 +141,7 @@ def run(
     *,
     run_id: str,
     max_concurrent: int = 1,
-    grader: Grader | None = None,
+    grader=None,
 ) -> dict:
     """Run the agent over tasks and grade each one. Returns an aggregate dict."""
     if grader is None:
@@ -180,6 +206,13 @@ def run(
         "errors": len(errors),
         "elapsed_seconds": round(elapsed, 1),
     }
+    # Dataset-specific grader aggregation (e.g. DSQA precision/recall/F1).
+    if hasattr(grader, "aggregate"):
+        try:
+            aggregate["grader_metrics"] = grader.aggregate([r.to_dict() for r in records])
+        except Exception as e:
+            console.print(f"[yellow]grader.aggregate failed: {e}[/yellow]")
+
     with open(agg_path, "w", encoding="utf-8") as f:
         json.dump(aggregate, f, indent=2)
 
@@ -188,6 +221,13 @@ def run(
         f"({correct}/{len(records)}) — {elapsed:.1f}s"
         + (f" · {aggregate['errors']} errors" if aggregate["errors"] else "")
     )
+    gm = aggregate.get("grader_metrics")
+    if gm and "f1" in gm:
+        console.print(
+            f"[bold]F1:[/bold] {gm['f1']:.3f} · "
+            f"[bold]Precision:[/bold] {gm['precision']:.3f} · "
+            f"[bold]Recall:[/bold] {gm['recall']:.3f}"
+        )
     console.print(f"[dim]Raw: {raw_path}[/dim]")
     console.print(f"[dim]Aggregate: {agg_path}[/dim]")
     return aggregate
