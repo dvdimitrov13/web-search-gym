@@ -72,6 +72,9 @@ class AgentDD(BaseAgent):
             max_shrink_attempts=searcher_cfg.get("max_shrink_attempts", 2),
             max_nudges=searcher_cfg.get("max_nudges", 3),
             verbose=self.config.get("verbose", False),
+            searcher_max_tokens=s_model.get(
+                "max_tokens", searcher_cfg.get("max_tokens", 4096)
+            ),
         )
 
         # Env override lets parallel runs with different models write to

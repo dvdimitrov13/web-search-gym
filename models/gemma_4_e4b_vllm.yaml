@@ -1,0 +1,13 @@
+name: "gemma_4_e4b_vllm"
+provider: "vllm"
+model_name: "google/gemma-4-E4B-it"
+# Served by self-hosted vLLM on vast.ai (RTX 5090, CUDA 12.8, driver 595+)
+# with --tool-call-parser gemma4. Reach via local SSH port-forward:
+#   ssh -p <vast-ssh-port> -L 8000:localhost:8000 -N -f root@ssh8.vast.ai
+base_url: "http://localhost:8000/v1"
+api_key_env: ""  # vLLM doesn't require an API key
+temperature: 0.2
+force_tools: true
+# Thinking is enabled on the vLLM server side via
+# --default-chat-template-kwargs '{"enable_thinking": true}' — give it room.
+max_tokens: 16384

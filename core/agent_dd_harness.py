@@ -111,6 +111,7 @@ class AgentDDHarness:
         max_nudges: int = 3,
         verbose: bool = False,
         exa_client: ExaClient | None = None,
+        searcher_max_tokens: int = 4096,
     ):
         self.client = _make_client(provider, base_url=base_url, api_key_env=api_key_env)
         self.searcher_model = searcher_model
@@ -125,6 +126,7 @@ class AgentDDHarness:
         self.max_shrink_attempts = max_shrink_attempts
         self.max_nudges = max_nudges
         self.verbose = verbose
+        self.searcher_max_tokens = searcher_max_tokens
 
         self.exa = exa_client or ExaClient(
             num_results=results_per_query, search_type=exa_search_type,
@@ -356,7 +358,7 @@ class AgentDDHarness:
         ]
         kwargs = dict(
             model=self.searcher_model,
-            max_tokens=4096,
+            max_tokens=self.searcher_max_tokens,
             temperature=self.temperature,
             system=system_blocks,
             messages=messages,
