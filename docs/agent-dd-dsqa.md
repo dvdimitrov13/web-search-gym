@@ -239,6 +239,110 @@ than serialized).
    DSQA's judge reads natural responses; the lean_searcher extractor
    actively hurt Set Answer scores by compressing enumerations.
 
+## §9. Gemma 4 student baselines — establishing the pre-SFT floor
+
+Same 32-task DSQA `domain2` split, same `agent_dd` 8-cycle +
+commit_memory harness. Only the model is swapped. These numbers
+define the distance a Gemma-4-4B SFT student would need to close to
+match Sonnet-teacher quality.
+
+### Measured baselines
+
+| Backend | Searcher think. | Ext. think. | Correct | F1 | P/R | Answered | Wall | Notes |
+|---|---|---|---:|---:|---|---:|---:|---|
+| Sonnet 4.5 (Anthropic direct) | ON (1024) | OFF (Haiku) | 46.9% | 0.607 | .629/.612 | 32/32 | 982s | Prod shape |
+| Gemma 4 26B-A4B (OpenRouter Anthropic shim) | OFF | OFF | 16.7% | 0.306 | .326/.309 | 16/30 | stuck | 30/32, 2 HTTP hangs, 47% nudge_exhausted |
+| Gemma 4 E4B (self-hosted vLLM) | OFF | OFF | 6.2% | 0.156 | .215/.142 | 31/32 | 320s | Native parser: 97% tool-use |
+| **Gemma 4 E4B (self-hosted vLLM)** | **ON** | **OFF** | **9.4%** | **0.260** | **.362/.226** | **32/32** | 732s | Final "fair" baseline |
+
+Broken mid-iteration (not scored, deleted): Gemma E4B vLLM with
+thinking ON for BOTH searcher and extractor produced a **97.6%
+empty-extract rate** because Gemma-with-thinking puts page extraction
+inside `<thinking>…</thinking>` and the `--reasoning-parser gemma4`
+strips it. Kept here as documented pitfall; the fix is per-call
+`chat_template_kwargs={"enable_thinking": False}` on the extractor.
+
+### Key findings from the Gemma work
+
+1. **Native tool serving >> model size for this task shape.** Shimmed
+   26B-A4B (OpenRouter) hit `nudge_exhausted` on 47% of tasks — the
+   model silently produced tool-use intent in a format the Anthropic
+   shim couldn't round-trip. Self-hosted vLLM with
+   `--tool-call-parser gemma4` brought tool-use reliability to 100%
+   on a strictly smaller model (4.5B dense E4B).
+2. **Thinking helps, but the extractor needs it OFF.** Our Sonnet
+   setup always had this asymmetry: searcher thinks, Haiku doesn't.
+   Gemma made it visible: enabling thinking globally for the
+   extractor silently zeros out browse content. `BrowseExtractor` now
+   sets `extra_body={"chat_template_kwargs": {"enable_thinking":
+   False}}` per-call when provider is openai-compat.
+3. **Tracing the translation path matters.** Every layer that wraps
+   tool-use (OpenRouter Anthropic shim, our OpenAI shim, vLLM's
+   `gemma4` parser) can silently mangle parallel tool-call fidelity.
+   Test each hop independently.
+
+### Self-hosted Gemma 4 setup (for repro)
+
+**Infra**: Vast.ai RTX 5090 (32GB VRAM, CUDA 12.8+, driver ≥595),
+pytorch 2.8 image, $0.34/hr.
+
+```bash
+# 1. Search offers with latest driver
+vastai search offers 'gpu_name=RTX_5090 num_gpus=1 reliability>0.97 \
+  inet_down>200' -o 'driver_version-' | head -5
+
+# 2. Launch (pytorch image has sshd; the vllm/vllm-openai image does NOT —
+#    it ships only the vllm entrypoint, so SSH is unreachable).
+vastai create instance <OFFER_ID> \
+  --image pytorch/pytorch:2.8.0-cuda12.8-cudnn9-devel \
+  --disk 60 --ssh --direct --env '-p 8000:8000'
+
+# 3. Register your local key if you haven't:
+vastai create ssh-key "$(cat ~/.ssh/id_ed25519.pub)"
+vastai attach ssh <INSTANCE_ID> "$(cat ~/.ssh/id_ed25519.pub)"
+
+# 4. SSH in, install vLLM + start serving in tmux
+ssh -p <ssh_port> root@<ssh_host>
+pip install --pre vllm   # ~0.19.1+ for gemma4 parser
+apt-get install -y tmux
+tmux new -d -s vllm 'vllm serve google/gemma-4-E4B-it \
+  --enable-auto-tool-choice --tool-call-parser gemma4 \
+  --reasoning-parser gemma4 \
+  --default-chat-template-kwargs "{\"enable_thinking\": true}" \
+  --gpu-memory-utilization 0.90 --async-scheduling \
+  --host 0.0.0.0 --port 8000 2>&1 | tee /root/vllm.log'
+
+# 5. Tunnel from local (host firewall blocks direct port)
+ssh -p <ssh_port> -L 8000:localhost:8000 -N -f root@<ssh_host>
+
+# 6. Run bench (model YAML at models/gemma_4_e4b_vllm.yaml)
+AGENT_DD_TRAJECTORIES_SUBDIR=agent_dd_gemma4_e4b_thinking_v2 \
+  uv run python -m bench.cli run --agent agent_dd \
+  --model gemma_4_e4b_vllm --extractor-model gemma_4_e4b_vllm \
+  --dataset deepsearchqa --split domain2 \
+  --concurrent 4 --run-id e4b_thinking_v2
+
+# 7. When done
+vastai destroy instance <INSTANCE_ID>
+```
+
+**Gotchas encountered, in order:**
+- `vllm/vllm-openai` image has no sshd → SSH refused, had to fall
+  back to pytorch image + pip-install vllm.
+- Vast's default SSH key is the one registered with the account; if
+  your local key isn't registered, SSH will fail with "Connection
+  refused" or "Permission denied". Register first, attach second.
+- Host firewall blocks direct port access on these Vast machines.
+  SSH port-forward (`-L 8000:localhost:8000`) is the only route.
+- `vllm/vllm-openai:latest` image from the original launch attempt
+  runs vllm as the entrypoint, so no interactive access — not useful
+  unless you already know exactly what command-line args you want.
+- Gemma 4 with `--reasoning-parser gemma4` + thinking on globally
+  empties the extractor output (see §9 finding 2 above).
+
+**Cost for 32-task bench**: ~$0.25-0.40 including setup time, one
+run. Two back-to-back runs (thinking OFF then ON) came in under $1.
+
 ## Next experiments (not run)
 
 - Cycle cap at 10-12 — squeeze the last few points out. Returns likely

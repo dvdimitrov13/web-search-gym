@@ -98,6 +98,49 @@ notes rather than expansive prose.
 rolled-up totals (with a separate `extractor_*` quartet for Haiku). Every
 synthesis rollout emits exact costs; no estimation from request counts.
 
+### Gemma 4 student baselines (same harness, same DSQA split)
+
+Same 32-task `domain2` split, same `agent_dd` 8-cycle + commit_memory
+harness. Only the model is swapped. Establishes the floor a trained
+Gemma 4 4B student would need to beat.
+
+| Backend | Searcher thinking | Correct | F1 | Answered | Wall |
+|---|---|---:|---:|---:|---:|
+| Sonnet 4.5 (Anthropic direct) | ON (budget=1024) | **46.9%** | **0.607** | 32/32 | 982s |
+| Gemma 4 26B-A4B (OpenRouter, Anthropic shim) | OFF | 16.7% (5/30)* | 0.306 | **16/30** | stuck |
+| Gemma 4 E4B (self-hosted vLLM) | OFF | 6.2% | 0.156 | 31/32 | 320s |
+| **Gemma 4 E4B (self-hosted vLLM)** | **ON (extractor OFF)** | 9.4% | **0.260** | 32/32 | 732s |
+
+*OpenRouter run was 30/32 tasks — 2 stuck on HTTP hangs, killed at 40
+min. 47% of completed tasks hit `nudge_exhausted` because OpenRouter's
+Anthropic shim mangles Gemma's tool-use format. Native serving fixed
+this (0% / 3% nudge_exhausted on the self-hosted runs).
+
+**Headline takeaways:**
+- **Native tool serving matters more than model size.** Gemma E4B on
+  vLLM `--tool-call-parser gemma4` answers 100% of tasks; the shimmed
+  26B-A4B only 53%. Same model family, different serving layer.
+- **Thinking helps, but you must turn it OFF for the extractor stage.**
+  Gemma 4 with thinking on puts extraction into `<thinking>…</thinking>`,
+  which the reasoning parser strips → 97.6% empty extracts. Per-call
+  `chat_template_kwargs={"enable_thinking": False}` on the extractor
+  while keeping the searcher's server-default ON is the right shape,
+  mirroring our Sonnet+Haiku setup (Sonnet thinks, Haiku doesn't).
+- **Gemma E4B floor is F1 0.260 — 43% of Sonnet's 0.607.** That's the
+  pre-SFT distance to close.
+
+Self-hosting notes (vLLM on RTX 5090 via Vast.ai):
+```bash
+vllm serve google/gemma-4-E4B-it \
+  --enable-auto-tool-choice --tool-call-parser gemma4 \
+  --reasoning-parser gemma4 \
+  --default-chat-template-kwargs '{"enable_thinking": true}' \
+  --gpu-memory-utilization 0.90 --host 0.0.0.0 --port 8000
+# Then from local: ssh -p <port> -L 8000:localhost:8000 -N -f root@<host>
+```
+See [docs/agent-dd-dsqa.md](docs/agent-dd-dsqa.md) §9 for the full
+setup and repro steps.
+
 ### Why `agent_dd` is a good SFT target
 
 - **Single rollout, single reward.** The whole trajectory (search → browse →
