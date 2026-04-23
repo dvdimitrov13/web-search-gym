@@ -34,7 +34,7 @@ from core.exa_client import ExaClient
 from core.harness import _fuzzy_replace  # reuse lean's scratchpad fuzzy matcher
 from core.agent_dd_prompts import AGENT_DD_SYSTEM_PROMPT
 from core.agent_dd_tools import AGENT_DD_ANTHROPIC_TOOLS
-from core.trace import SubmittedUrl, Trace, TraceMetadata
+from core.trace import SubmittedUrl, Trace, TraceMetadata, TurnState
 from core.types import Answer, RetryableAgentError, Task
 
 _RETRY_DELAYS = [15, 30, 45]
@@ -154,6 +154,10 @@ class AgentDDHarness:
         nudge_count = 0
         stop_reason = "no_tool"
         final_answer: Answer | None = None
+        # Per-turn state snapshots for SFT replay. One entry per assistant
+        # turn that actually makes it to the LLM (nudge-retry turns also
+        # appear, since they are real turns the model saw).
+        turn_states: list[TurnState] = []
 
         # One turn per iteration, capped so we can't loop forever even if
         # the model refuses to call `answer`. Generous multiplier because
@@ -161,9 +165,13 @@ class AgentDDHarness:
         max_iterations = self.max_cycles * 4 + self.max_nudges
 
         for _ in range(max_iterations):
-            call_messages = self._inject_live_state(
-                messages, cycle_count, scratchpad, searches_issued=searches_issued,
+            # Build the live-state text FIRST so we can (a) inject it into the
+            # API-bound messages and (b) stash it verbatim in TurnState for
+            # exact SFT replay later.
+            live_text = self._build_live_state_text(
+                cycle_count, scratchpad, searches_issued=searches_issued,
             )
+            call_messages = self._inject_live_state(messages, live_text)
 
             # Restrict tools to commit_memory only while the scratchpad is
             # over budget — model must shrink before anything else.
@@ -172,6 +180,16 @@ class AgentDDHarness:
                 if must_shrink
                 else AGENT_DD_ANTHROPIC_TOOLS
             )
+
+            turn_states.append(TurnState(
+                cycle_count=cycle_count,
+                searches_issued=searches_issued,
+                scratchpad=scratchpad,
+                must_shrink=must_shrink,
+                live_state_text=live_text,
+                tools_available=[t["name"] for t in turn_tools],
+            ))
+
             response = self._call_llm(system, call_messages, tools=turn_tools)
 
             if self.verbose:
@@ -266,6 +284,7 @@ class AgentDDHarness:
             ),
             searcher_model=self.searcher_model,
             synthesis=final_answer.natural_text,
+            turn_states=turn_states,
         )
         return trace, final_answer
 
@@ -287,20 +306,20 @@ class AgentDDHarness:
             }
         return _llm_call(self.client, **kwargs)
 
-    def _inject_live_state(
+    def _build_live_state_text(
         self,
-        messages: list[dict],
         cycle_count: int,
         scratchpad: str,
         *,
         searches_issued: int | None = None,
-    ) -> list[dict]:
-        """Append live <budget>+<commit_memory> text to the last user message.
+    ) -> str:
+        """Render the per-turn <budget>+<commit_memory> block.
 
-        Same pattern as the lean harness: live state sits next to the model's
-        generation point, keeping the system prompt cacheable across turns.
+        Split from `_inject_live_state` so the harness can record the
+        verbatim text in a TurnState snapshot before it ever hits the API.
+        Same text → same training signal.
         """
-        live = live_state_block(
+        return live_state_block(
             search_count=cycle_count,
             max_searches=self.max_cycles,
             scratchpad=scratchpad,
@@ -308,6 +327,17 @@ class AgentDDHarness:
             label="search cycles",
             searches_issued=searches_issued,
         )
+
+    def _inject_live_state(
+        self,
+        messages: list[dict],
+        live_text: str,
+    ) -> list[dict]:
+        """Append a pre-built live-state text to the last user message.
+
+        Same pattern as the lean harness: live state sits next to the model's
+        generation point, keeping the system prompt cacheable across turns.
+        """
         call_messages = self._strip_thinking(messages)
         if call_messages and call_messages[-1].get("role") == "user":
             last = dict(call_messages[-1])
@@ -315,13 +345,13 @@ class AgentDDHarness:
             if isinstance(content, str):
                 last["content"] = [
                     {"type": "text", "text": content},
-                    {"type": "text", "text": live},
+                    {"type": "text", "text": live_text},
                 ]
             else:
-                last["content"] = list(content) + [{"type": "text", "text": live}]
+                last["content"] = list(content) + [{"type": "text", "text": live_text}]
             call_messages[-1] = last
         else:
-            call_messages.append({"role": "user", "content": live})
+            call_messages.append({"role": "user", "content": live_text})
         return call_messages
 
     def _strip_thinking(self, messages: list[dict]) -> list[dict]:

@@ -42,6 +42,34 @@ class TraceMetadata:
 
 
 @dataclass
+class TurnState:
+    """Snapshot captured immediately BEFORE an assistant turn is called.
+
+    SFT needs every per-turn sample to match what the agent actually saw
+    at that point in time — the dynamic live_state block (budget +
+    scratchpad) and the effective tool set (which can be restricted during
+    a must_shrink lock). Re-simulating this from `messages` alone is
+    fragile (small format changes → training/inference drift). Instead,
+    the harness records the exact snapshot here; the SFT converter reads
+    it verbatim.
+
+    Fields:
+      - cycle_count:   cycles used going INTO this turn
+      - searches_issued: individual searches issued so far
+      - scratchpad:    scratchpad contents visible to the model
+      - must_shrink:   whether the turn was locked to commit_memory only
+      - live_state_text: the exact text appended to the last user message
+      - tools_available: names of the tools offered to the model this turn
+    """
+    cycle_count: int = 0
+    searches_issued: int = 0
+    scratchpad: str = ""
+    must_shrink: bool = False
+    live_state_text: str = ""
+    tools_available: list[str] = field(default_factory=list)
+
+
+@dataclass
 class Trace:
     """Full record of one searcher run."""
 
@@ -56,6 +84,10 @@ class Trace:
     searcher_model: str = ""
     # Optional: pre-synthesized answer from a non-harness searcher (e.g. exa_deep).
     synthesis: str = ""
+    # Per-assistant-turn state snapshots. One entry per assistant turn, in
+    # order. SFT per-turn conversion reads this directly — no replay-based
+    # simulation. Empty list on older traces that predate the field.
+    turn_states: list[TurnState] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -68,6 +100,7 @@ class Trace:
             "agent": self.agent,
             "searcher_model": self.searcher_model,
             "synthesis": self.synthesis,
+            "turn_states": [asdict(s) for s in self.turn_states],
         }
 
     def save(self, path: Path) -> None:
@@ -99,6 +132,7 @@ class Trace:
             agent=raw.get("agent", ""),
             searcher_model=raw.get("searcher_model", ""),
             synthesis=raw.get("synthesis", ""),
+            turn_states=[TurnState(**s) for s in raw.get("turn_states", [])],
         )
 
     def sources_in_order(self) -> list[SourceInfo]:

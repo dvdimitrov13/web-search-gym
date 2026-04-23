@@ -399,6 +399,163 @@ def convert_per_turn(
     return examples
 
 
+# ── agent_dd-specific conversion ───────────────────────────────────
+#
+# For agent_dd traces we do NOT simulate state — the harness already
+# records an exact per-turn TurnState (including the verbatim live-state
+# text and the filtered tool set). Conversion becomes pure replay: take
+# the message prefix up to turn i, append `turn_states[i].live_state_text`
+# to the last user message, strip thinking from prior turns, and emit
+# (prompt, completion) pairs.
+
+
+def _filter_openai_tools(all_tools: list[dict], names: list[str]) -> list[dict]:
+    """Keep only the tools whose `function.name` is in `names`."""
+    names_set = set(names)
+    return [t for t in all_tools if t.get("function", {}).get("name") in names_set]
+
+
+def _append_text_to_last_user(prompt: list[dict], text: str) -> None:
+    """Append a text chunk to the last user message's content (in place).
+
+    Matches the harness's `_inject_live_state` shape: the original content
+    stays first, the live-state text is a second text block tacked on.
+    """
+    if not prompt or prompt[-1].get("role") != "user":
+        prompt.append({"role": "user", "content": text})
+        return
+    last = prompt[-1]
+    content = last.get("content", "")
+    if isinstance(content, str):
+        last["content"] = f"{content}\n\n{text}" if content else text
+    else:
+        # List form: append another text block.
+        last["content"] = list(content) + [{"type": "text", "text": text}]
+
+
+def _build_agent_dd_system_prompt(max_cycles: int) -> str:
+    from datetime import date as _date
+    from core.agent_dd_prompts import AGENT_DD_SYSTEM_PROMPT
+    return AGENT_DD_SYSTEM_PROMPT.format(
+        date=_date.today().isoformat(),
+        max_cycles=max_cycles,
+    )
+
+
+def _convert_agent_dd_tool_results(blocks: list[dict]) -> list[dict]:
+    """agent_dd tool_result → Qwen3 tool-role messages.
+
+    agent_dd's commit_memory handler emits status text starting with
+    'commit_memory '. Those are safe as-is (no scratchpad content leaks
+    into tool_results — the live <commit_memory> block carries state).
+    """
+    out: list[dict] = []
+    for b in blocks:
+        if b.get("type") != "tool_result":
+            continue
+        content = b.get("content", "")
+        if isinstance(content, list):
+            content = "\n".join(
+                c.get("text", "") for c in content if c.get("type") == "text"
+            )
+        out.append({"role": "tool", "content": str(content)})
+    return out
+
+
+def convert_agent_dd_per_turn(trace: Trace) -> list[dict]:
+    """Per-turn SFT examples for agent_dd traces.
+
+    One (prompt, completion) example per assistant turn. Reads the exact
+    dynamic state from `trace.turn_states` — no simulation. Each sample's
+    prompt matches what the agent actually saw at that step.
+
+    Requirements:
+    - Trace must carry `turn_states` (one per assistant turn, in order).
+      Older traces without it are skipped with a warning.
+    """
+    from core.agent_dd_tools import AGENT_DD_OPENAI_TOOLS
+
+    max_cycles = 0
+    for s in trace.turn_states:
+        if s.cycle_count > max_cycles:
+            max_cycles = s.cycle_count
+    # turn_states hold cycles USED going INTO each turn. The budget ceiling
+    # should stay constant across turns — pull it from the first turn's
+    # live_state_text which always reads "search cycles: N/<cap> used".
+    # Fall back to 8 (agent_dd default) if unreadable.
+    cap = 8
+    if trace.turn_states:
+        import re
+        m = re.search(
+            r"search cycles:\s*\d+/(\d+)\s+used",
+            trace.turn_states[0].live_state_text,
+        )
+        if m:
+            cap = int(m.group(1))
+
+    system_prompt = _build_agent_dd_system_prompt(cap)
+
+    # Pair each assistant turn with its following tool_result (if any).
+    parsed: list[tuple[str, list[dict]]] = []
+    for a_msg, t_msg in _iter_assistant_tool_pairs(trace.messages):
+        parsed.append(("assistant", a_msg.get("content", [])))
+        if t_msg is not None:
+            parsed.append(("tool", t_msg.get("content", [])))
+
+    # Walk assistant turns; each yields one training example.
+    examples: list[dict] = []
+    assistant_turn_idx = 0
+    for i, (role, payload) in enumerate(parsed):
+        if role != "assistant":
+            continue
+
+        if assistant_turn_idx >= len(trace.turn_states):
+            # Trace is malformed or missing state for this turn — skip.
+            break
+        state = trace.turn_states[assistant_turn_idx]
+
+        prompt: list[dict] = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Research task:\n\n{trace.question}"},
+        ]
+
+        # Replay all PRIOR turns with thinking stripped.
+        for j in range(i):
+            prev_role, prev_payload = parsed[j]
+            if prev_role == "assistant":
+                prompt.append(_convert_assistant(prev_payload, include_thinking=False))
+            else:  # tool_result block
+                prompt.extend(_convert_agent_dd_tool_results(prev_payload))
+
+        # Inject the verbatim live-state text onto the LAST user message —
+        # same shape the harness fed to the model at this step.
+        _append_text_to_last_user(prompt, state.live_state_text)
+
+        # Current turn WITH thinking is the sole loss target.
+        completion = [_convert_assistant(payload, include_thinking=True)]
+
+        examples.append({
+            "task_idx": trace.task_idx,
+            "turn_idx": assistant_turn_idx,
+            "prompt": deepcopy(prompt),
+            "completion": deepcopy(completion),
+            "tools": _filter_openai_tools(AGENT_DD_OPENAI_TOOLS, state.tools_available),
+            # Per-turn diagnostics (not used by training but preserved for
+            # debugging and filtering):
+            "meta": {
+                "cycle_count": state.cycle_count,
+                "searches_issued": state.searches_issued,
+                "must_shrink": state.must_shrink,
+                "tools_available": list(state.tools_available),
+                "agent": trace.agent,
+                "searcher_model": trace.searcher_model,
+            },
+        })
+        assistant_turn_idx += 1
+
+    return examples
+
+
 # ── File-level driver + CLI ────────────────────────────────────────
 
 
@@ -429,6 +586,8 @@ def convert_dir(
                     scratchpad_max_tokens=scratchpad_max_tokens,
                 )
             )
+        elif mode == "agent-dd-per-turn":
+            records.extend(convert_agent_dd_per_turn(trace))
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
@@ -443,7 +602,16 @@ def main():
     p = argparse.ArgumentParser(description="Trace → Qwen3 SFT JSONL")
     p.add_argument("--input", type=Path, required=True, help="Trace dir OR single JSONL with concatenated traces")
     p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--mode", choices=["whole", "per-turn"], default="per-turn")
+    p.add_argument(
+        "--mode",
+        choices=["whole", "per-turn", "agent-dd-per-turn"],
+        default="per-turn",
+        help=(
+            "whole/per-turn use the lean_searcher format (simulates state from "
+            "messages). agent-dd-per-turn reads exact per-turn state from the "
+            "trace's turn_states — use this for agent_dd traces."
+        ),
+    )
     p.add_argument("--max-searches", type=int, default=DEFAULT_MAX_SEARCHES)
     p.add_argument(
         "--scratchpad-max-tokens",

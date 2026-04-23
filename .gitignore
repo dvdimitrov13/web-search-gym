@@ -16,19 +16,17 @@ build/
 .venv/
 env/
 
-# Generated artifacts (regenerable, large)
+# Generated artifacts (regenerable, large). Headline numbers land in docs/.
 reports/*
 !reports/.gitkeep
 trajectories/*
 !trajectories/.gitkeep
+results/*
+!results/.gitkeep
 sft/data/*
 !sft/data/.gitkeep
 sft/checkpoints/
 sft/logs/
-
-# Results: commit CSVs/JSONs, ignore large traces
-results/raw/
-results/trajectories/
 
 # Logs
 *.log

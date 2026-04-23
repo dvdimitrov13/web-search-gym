@@ -141,4 +141,27 @@ def to_anthropic_tools() -> list[dict]:
     ]
 
 
+def to_openai_tools() -> list[dict]:
+    """Render to OpenAI function-calling format — Qwen3 / tokenizer-compatible.
+
+    Used by `sft/convert.py` when building per-turn training examples.
+    """
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": name,
+                "description": spec["description"],
+                "parameters": {
+                    "type": "object",
+                    "properties": spec["properties"],
+                    "required": spec["required"],
+                },
+            },
+        }
+        for name, spec in CANONICAL_AGENT_DD_TOOLS.items()
+    ]
+
+
 AGENT_DD_ANTHROPIC_TOOLS = to_anthropic_tools()
+AGENT_DD_OPENAI_TOOLS = to_openai_tools()
