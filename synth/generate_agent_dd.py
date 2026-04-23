@@ -52,6 +52,25 @@ from core.types import Task
 console = Console()
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
+_TRAJECTORIES_DIR = _REPO_ROOT / "trajectories"
+
+
+def _filter_already_done(tasks: list[Task], agent_name: str) -> tuple[list[Task], int]:
+    """Drop tasks whose trace already exists on disk.
+
+    Matches the path the agent writes to (`trajectories/<agent>/idx-N.json`).
+    Makes the synth run restart-safe: a Ctrl+C mid-run can be resumed without
+    re-spending on completed trajectories.
+    """
+    out_dir = _TRAJECTORIES_DIR / agent_name
+    remaining: list[Task] = []
+    skipped = 0
+    for t in tasks:
+        if (out_dir / f"idx-{t.idx}.json").exists():
+            skipped += 1
+        else:
+            remaining.append(t)
+    return remaining, skipped
 
 
 def _load_tasks(source: str, path: Path | None, split: str | None, indices: list[int] | None) -> list[Task]:
@@ -119,10 +138,24 @@ def generate(
     indices: list[int] | None,
     concurrent: int,
     dataset_tag: str,
+    force: bool,
 ) -> int:
     tasks = _load_tasks(source, path, split, indices)
     if not tasks:
         console.print("[yellow]No tasks to process.[/yellow]")
+        return 0
+
+    total = len(tasks)
+    skipped = 0
+    if not force:
+        tasks, skipped = _filter_already_done(tasks, agent_name)
+        if skipped:
+            console.print(
+                f"[dim]Resuming:[/dim] {skipped}/{total} trajectories already "
+                f"on disk — skipping. Pass [bold]--force[/bold] to re-run them."
+            )
+    if not tasks:
+        console.print("[green]All tasks already have trajectories. Nothing to do.[/green]")
         return 0
 
     agent = load_agent(agent_name, model=model_name)
@@ -203,6 +236,13 @@ def main():
             "this (e.g. extractor skip for DSQA). Defaults to the --source name."
         ),
     )
+    p.add_argument(
+        "--force", action="store_true",
+        help=(
+            "Re-run tasks whose trajectories already exist on disk. Default "
+            "is to skip them (restart-safe resume)."
+        ),
+    )
     args = p.parse_args()
 
     indices = None
@@ -219,6 +259,7 @@ def main():
         indices=indices,
         concurrent=args.concurrent,
         dataset_tag=dataset_tag,
+        force=args.force,
     )
 
 
