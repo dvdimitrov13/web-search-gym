@@ -39,6 +39,21 @@ class TraceMetadata:
     nudge_count: int = 0
     elapsed_seconds: float = 0.0
     stop_reason: str = ""  # "submit" | "no_tool" | "nudge_exhausted" | "error"
+    # Rolled-up searcher token usage across all turns (sum of TurnState
+    # counters). Lets cost summaries read from the trace without re-walking
+    # turn_states.
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+    cache_read_input_tokens: int = 0
+    # Extractor totals (Haiku browse_page calls, if the agent uses one).
+    # Tracked separately because the extractor usually runs on a different
+    # model at different pricing — aggregating them together would obscure
+    # the per-model cost breakdown.
+    extractor_input_tokens: int = 0
+    extractor_output_tokens: int = 0
+    extractor_cache_creation_input_tokens: int = 0
+    extractor_cache_read_input_tokens: int = 0
 
 
 @dataclass
@@ -67,6 +82,12 @@ class TurnState:
     must_shrink: bool = False
     live_state_text: str = ""
     tools_available: list[str] = field(default_factory=list)
+    # Populated AFTER the LLM call using `response.usage`. All four fields
+    # default to 0 so old traces (pre-capture) round-trip cleanly.
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_creation_input_tokens: int = 0
+    cache_read_input_tokens: int = 0
 
 
 @dataclass

@@ -110,25 +110,51 @@ class HaikuBrowseExtractor:
         ]
         return "".join(parts).strip()
 
-    def extract(self, *, url: str, title: str, question: str, content: str) -> str:
+    @staticmethod
+    def _usage_dict(resp) -> dict:
+        """Pull `usage` off the Anthropic response into a plain dict.
+
+        Shape matches the TurnState / TraceMetadata usage field names so
+        it drops straight into the aggregate accountings.
+        """
+        u = getattr(resp, "usage", None)
+        if u is None:
+            return {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 0,
+            }
+        return {
+            "input_tokens": getattr(u, "input_tokens", 0) or 0,
+            "output_tokens": getattr(u, "output_tokens", 0) or 0,
+            "cache_creation_input_tokens": getattr(u, "cache_creation_input_tokens", 0) or 0,
+            "cache_read_input_tokens": getattr(u, "cache_read_input_tokens", 0) or 0,
+        }
+
+    def extract(
+        self, *, url: str, title: str, question: str, content: str,
+    ) -> tuple[str, dict]:
+        """Returns (extracted_text, usage_dict)."""
         prompt = self._build_prompt(url=url, title=title, question=question, content=content)
         resp = self.client.messages.create(
             model=self.model,
             max_tokens=self.max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
-        return self._extract_text(resp)
+        return self._extract_text(resp), self._usage_dict(resp)
 
     async def extract_async(
         self, *, url: str, title: str, question: str, content: str,
-    ) -> str:
+    ) -> tuple[str, dict]:
+        """Async counterpart. Returns (extracted_text, usage_dict)."""
         prompt = self._build_prompt(url=url, title=title, question=question, content=content)
         resp = await self.async_client.messages.create(
             model=self.model,
             max_tokens=self.max_tokens,
             messages=[{"role": "user", "content": prompt}],
         )
-        return self._extract_text(resp)
+        return self._extract_text(resp), self._usage_dict(resp)
 
 
 def browse_and_extract(
@@ -139,10 +165,11 @@ def browse_and_extract(
 ) -> dict:
     """Full browse pipeline: Jina Reader fetch → Haiku extractive cleanup.
 
-    Returns {url, title, text} where `text` is the Haiku extract.
+    Returns {url, title, text, usage} — `usage` is the Haiku call's
+    per-call token dict (input_tokens, output_tokens, cache_*).
     """
     fetched = fetch_webpage_jina(url, api_key=jina_api_key)
-    extracted = extractor.extract(
+    extracted, usage = extractor.extract(
         url=fetched["url"],
         title=fetched["title"],
         question=question,
@@ -152,4 +179,5 @@ def browse_and_extract(
         "url": fetched["url"],
         "title": fetched["title"],
         "text": extracted,
+        "usage": usage,
     }

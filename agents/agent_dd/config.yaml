@@ -24,7 +24,9 @@ searcher:
   max_nudges: 3
   # Persistent commit_memory scratchpad — free, does not consume a cycle.
   # Over-budget turns lock the agent into commit_memory-only until shrunk.
-  scratchpad_max_tokens: 1024
+  # 512 tokens forces a tight constraints-table / progress-tracker shape
+  # rather than expansive notes (prior default was 1024).
+  scratchpad_max_tokens: 512
   max_shrink_attempts: 2
 
 browse:

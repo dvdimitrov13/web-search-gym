@@ -66,11 +66,37 @@ Full write-up: [docs/agent-dd-dsqa.md](docs/agent-dd-dsqa.md).
 | exa_deep (no-extract) | 25.0% (8/32) | 36.1% | 40.9% | 34.9% | 118s | ~15s |
 | lean_searcher 5-search | 25.0% (8/32) | 41.9% | 46.8% | 41.8% | 1147s | ~143s |
 | lean_searcher 5-cycle | 25.0% (8/32) | 45.8% | 49.8% | 44.1% | 1702s | ~213s |
-| **agent_dd 8-cycle + commit_memory** | **43.8% (14/32)** | **50.4%** | **53.8%** | **49.5%** | **1046s** | **~131s** |
+| agent_dd 8-cycle + mem (mem=1024, no cache) | 43.8% (14/32) | 50.4% | 53.8% | 49.5% | 1046s | ~131s |
+| **agent_dd 8-cycle + mem (mem=512, cached)** | **46.9% (15/32)** | **60.7%** | **62.9%** | **61.2%** | **982s** | **~123s** |
 
-`agent_dd` beats the next-best harness by **+18.8pt fully-correct and +4.6pt F1**
-while being **~1.6× faster** end-to-end. F1 crossed 50% for the first time on
-DSQA domain2.
+The cached configuration adds prompt caching (`cache_control` on the system
+block and the last stable message block) and tightens `scratchpad_max_tokens`
+from 1024 → 512. Quality moved **+3.1pt correct / +10.3pt F1** vs the prior
+best; the tighter scratchpad budget nudges the model toward constraints-table
+notes rather than expansive prose.
+
+### Cost (measured from trace `usage` fields, 32-task DSQA domain2 run)
+
+| | tokens |
+|---:|---:|
+| Sonnet input (uncached) | 102k |
+| Sonnet output | 163k |
+| Sonnet cache write | 289k |
+| **Sonnet cache read** | **2.35M** |
+| Haiku input (extractor) | 1.58M |
+| Haiku output | 34k |
+
+- **85.7% of Sonnet input mass served from cache** — per-turn caching of the
+  system block + stable message prefix hits cleanly across turns in a rollout.
+- **$6.29 for the 32-task bench** ($0.197/task, measured not estimated).
+  Split: Sonnet $4.54 · Haiku $1.75.
+- **400-task synthesis run projected at ~$79** — back-computed from real
+  per-task cost, not a ceiling estimate.
+
+`TraceMetadata` and `TurnState` now carry `input_tokens`, `output_tokens`,
+`cache_creation_input_tokens`, `cache_read_input_tokens` per turn plus
+rolled-up totals (with a separate `extractor_*` quartet for Haiku). Every
+synthesis rollout emits exact costs; no estimation from request counts.
 
 ### Why `agent_dd` is a good SFT target
 

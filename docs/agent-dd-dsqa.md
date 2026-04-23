@@ -116,6 +116,46 @@ mean 3.3 calls per task. Biggest single-step improvement in the whole
 experiment: **+15.7pt fully-correct, +4pt F1** just from adding the
 scratchpad.
 
+### 8. Prompt caching + scratchpad=512 (latest)
+Before synthesizing 400 trajectories for SFT, we wired prompt caching and
+tightened the scratchpad budget.
+
+**Caching.** Two `cache_control: {type: "ephemeral"}` markers per request:
+one on the (large, immutable) system block, one on the last stable message
+block immediately before the dynamic `live_state` text is appended. The
+system block creates a cache hit from turn 2 onward; the message-tail
+marker extends the cached prefix to cover the growing conversation on
+turns 3+. A turn's `live_state` (budget + scratchpad) is never inside the
+cached span, so per-turn dynamic context still flows correctly.
+
+**Scratchpad 1024 → 512.** The prior limit encouraged long expansive
+notes. 512 forces a constraints-table / progress-tracker shape. No
+measurable impact on cycle usage or commit frequency, but Set Answer
+discipline tightened: F1 +10.3pt vs prior best.
+
+**Usage tracking.** `TraceMetadata` and `TurnState` now carry the full
+Anthropic `usage` quartet (`input_tokens`, `output_tokens`,
+`cache_creation_input_tokens`, `cache_read_input_tokens`). Haiku
+extractor totals are tracked in a separate `extractor_*` quartet — they
+use different pricing and (today) no caching, so aggregating them
+together would obscure the breakdown. Every trace now carries exact
+cost, measured not estimated.
+
+Measured on the 32-task rerun:
+
+| Metric | Value |
+|---|---:|
+| Sonnet cache-read share of input mass | 85.7% |
+| Total Sonnet input (uncached) | 102k |
+| Total Sonnet cache-read | 2.35M |
+| Cost per task (Sonnet + Haiku) | $0.197 |
+| 400-task synthesis projection | ~$79 |
+
+Without caching, the same Sonnet input mass would have cost ~4.3× more
+(cache reads bill at 10% of base input, cache writes at 125%). On DSQA
+Set Answer tasks with 5–8 cycles, the prefix is reused 5–8 times —
+caching is a near-perfect fit.
+
 ## Results — DSQA domain2 (32 tasks)
 
 | Agent config | Fully correct | F1 | Precision | Recall | Wall (c=4) | Avg/task |
@@ -126,7 +166,8 @@ scratchpad.
 | lean 5-cycle + instant + split-query | 18.8% (6/32) | 42.4% | 45.4% | 41.7% | 1449s | ~181s |
 | agent_dd 5-cycle | 21.9% (7/32) | 36.8% | 47.0% | 34.0% | 490s | ~61s |
 | agent_dd 8-cycle | 28.1% (9/32) | 46.4% | 54.1% | 43.5% | 750s | ~94s |
-| **agent_dd 8-cycle + commit_memory** | **43.8% (14/32)** | **50.4%** | **53.8%** | **49.5%** | **1046s** | **~131s** |
+| agent_dd 8-cycle + mem (mem=1024, no cache) | 43.8% (14/32) | 50.4% | 53.8% | 49.5% | 1046s | ~131s |
+| **agent_dd 8-cycle + mem (mem=512, cached)** | **46.9% (15/32)** | **60.7%** | **62.9%** | **61.2%** | **982s** | **~123s** |
 
 **Per-task timings** are the full-bench wall-clock divided by 32, with
 `concurrency=4`. The wall-clock number is what you'd actually wait for;

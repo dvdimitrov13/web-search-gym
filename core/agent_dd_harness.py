@@ -181,16 +181,32 @@ class AgentDDHarness:
                 else AGENT_DD_ANTHROPIC_TOOLS
             )
 
-            turn_states.append(TurnState(
+            turn_state = TurnState(
                 cycle_count=cycle_count,
                 searches_issued=searches_issued,
                 scratchpad=scratchpad,
                 must_shrink=must_shrink,
                 live_state_text=live_text,
                 tools_available=[t["name"] for t in turn_tools],
-            ))
+            )
+            turn_states.append(turn_state)
 
             response = self._call_llm(system, call_messages, tools=turn_tools)
+
+            # Capture exact token + cache usage from the API response.
+            # These fields are always present on Anthropic responses; fall
+            # back to 0 if an alternate provider (e.g. OpenRouter in a
+            # different shape) omits any of them.
+            usage = getattr(response, "usage", None)
+            if usage is not None:
+                turn_state.input_tokens = getattr(usage, "input_tokens", 0) or 0
+                turn_state.output_tokens = getattr(usage, "output_tokens", 0) or 0
+                turn_state.cache_creation_input_tokens = (
+                    getattr(usage, "cache_creation_input_tokens", 0) or 0
+                )
+                turn_state.cache_read_input_tokens = (
+                    getattr(usage, "cache_read_input_tokens", 0) or 0
+                )
 
             if self.verbose:
                 for b in response.content:
@@ -269,6 +285,23 @@ class AgentDDHarness:
             for sid in (final_answer.natural_text.split("\n") if False else [])
         ]
 
+        # Aggregate per-turn usage into trace-level totals for quick cost math.
+        agg_in = sum(s.input_tokens for s in turn_states)
+        agg_out = sum(s.output_tokens for s in turn_states)
+        agg_cache_write = sum(s.cache_creation_input_tokens for s in turn_states)
+        agg_cache_read = sum(s.cache_read_input_tokens for s in turn_states)
+        # Extractor usage (Haiku browse_page calls). Per-call usage is stashed
+        # on each browse-type source_bank entry; sum them here.
+        ext_in = ext_out = ext_cw = ext_cr = 0
+        for entry in source_bank.values():
+            if entry.get("type") != "browse":
+                continue
+            u = entry.get("usage") or {}
+            ext_in += u.get("input_tokens", 0)
+            ext_out += u.get("output_tokens", 0)
+            ext_cw += u.get("cache_creation_input_tokens", 0)
+            ext_cr += u.get("cache_read_input_tokens", 0)
+
         trace = Trace(
             task_idx=task.idx,
             question=task.question,
@@ -281,6 +314,14 @@ class AgentDDHarness:
                 nudge_count=nudge_count,
                 elapsed_seconds=round(elapsed, 2),
                 stop_reason=stop_reason,
+                input_tokens=agg_in,
+                output_tokens=agg_out,
+                cache_creation_input_tokens=agg_cache_write,
+                cache_read_input_tokens=agg_cache_read,
+                extractor_input_tokens=ext_in,
+                extractor_output_tokens=ext_out,
+                extractor_cache_creation_input_tokens=ext_cw,
+                extractor_cache_read_input_tokens=ext_cr,
             ),
             searcher_model=self.searcher_model,
             synthesis=final_answer.natural_text,
@@ -291,11 +332,20 @@ class AgentDDHarness:
     # ── LLM call + message mgmt ────────────────────────────────────
 
     def _call_llm(self, system: str, messages: list[dict], tools: list[dict] | None = None):
+        # System prompt is static across turns → cache it. Wrapped in a
+        # single-element list so we can attach `cache_control`. Combined
+        # with the message-level breakpoint set by `_inject_live_state`,
+        # this gives us two cache breakpoints per request (of the
+        # 4-per-request limit) — enough to cover system+tools and the
+        # growing conversation prefix separately.
+        system_blocks = [
+            {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+        ]
         kwargs = dict(
             model=self.searcher_model,
             max_tokens=4096,
             temperature=self.temperature,
-            system=system,
+            system=system_blocks,
             messages=messages,
             tools=tools if tools is not None else AGENT_DD_ANTHROPIC_TOOLS,
         )
@@ -335,20 +385,34 @@ class AgentDDHarness:
     ) -> list[dict]:
         """Append a pre-built live-state text to the last user message.
 
-        Same pattern as the lean harness: live state sits next to the model's
-        generation point, keeping the system prompt cacheable across turns.
+        Also places a `cache_control` breakpoint on the last STABLE content
+        block (before live_text), which changes every turn and therefore
+        can't be cached. The cache thus covers system + all prior turns +
+        the stable part of the current user message; only the fresh
+        live_text (and tool_use content after it) is billed at full rate.
         """
         call_messages = self._strip_thinking(messages)
+        cache_marker = {"cache_control": {"type": "ephemeral"}}
         if call_messages and call_messages[-1].get("role") == "user":
             last = dict(call_messages[-1])
             content = last.get("content", "")
             if isinstance(content, str):
+                # Initial task turn: split the string into a stable task
+                # block (cached) and the fresh live_state block.
                 last["content"] = [
-                    {"type": "text", "text": content},
+                    {"type": "text", "text": content, **cache_marker},
                     {"type": "text", "text": live_text},
                 ]
             else:
-                last["content"] = list(content) + [{"type": "text", "text": live_text}]
+                # Tool-result turn: mark the last pre-existing block as a
+                # cache breakpoint, then append live_text as fresh content.
+                new_content = list(content)
+                if new_content:
+                    tail = dict(new_content[-1])
+                    tail["cache_control"] = {"type": "ephemeral"}
+                    new_content[-1] = tail
+                new_content.append({"type": "text", "text": live_text})
+                last["content"] = new_content
             call_messages[-1] = last
         else:
             call_messages.append({"role": "user", "content": live_text})
@@ -656,7 +720,7 @@ class AgentDDHarness:
             }
 
         try:
-            extracted = await self.browse_extractor.extract_async(
+            extracted, extractor_usage = await self.browse_extractor.extract_async(
                 url=url,
                 title=cached["title"],
                 question=question,
@@ -677,6 +741,7 @@ class AgentDDHarness:
             "text": extracted,
             "type": "browse",
             "question": question,
+            "usage": extractor_usage,
         }
         if self.verbose:
             console.print(
