@@ -171,8 +171,8 @@ setup and repro steps.
 ### What's next
 
 - Close the outstanding 23/32 tasks that hit the cycle cap — test cap=10/12.
-- Generate teacher trajectories (`synth/generate`) with the agent_ddharness +
-  Sonnet 4.5 against DSQA + filterbench.
+- Generate teacher trajectories (`synth/generate_agent_dd`) with the agent_dd
+  harness + Sonnet 4.5 against DSQA + filterbench.
 - SFT a Qwen3-8B / Gemma 3-12B student on the teacher traces and
   re-benchmark against the Sonnet teacher baseline.
 - Port the existing GRPO stack (`rl/`) to use agent_dd's rollout format.

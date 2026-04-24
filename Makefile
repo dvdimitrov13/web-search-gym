@@ -12,7 +12,8 @@ RUN_ID ?= $(shell date +%Y%m%d_%H%M%S)
 CONCURRENT ?= 1
 MODE ?= per-turn
 CONFIG ?=
-QUESTIONS ?=
+SYNTH_SOURCE ?= deepsearchqa
+SYNTH_CONCURRENT ?= 4
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -59,11 +60,13 @@ new-agent: ## Scaffold a new agent harness (make new-agent NAME=my_harness)
 
 # === Synth (data generation) ===
 
-synth: ## Generate trajectories (make synth MODEL=claude_sonnet QUESTIONS=path/to/q.jsonl)
-	@test -n "$(QUESTIONS)" || (echo "ERROR: specify QUESTIONS=<path>" && exit 1)
-	$(PYTHON) -m synth.generate \
-		--questions $(QUESTIONS) \
-		$(if $(MODEL),--model $(MODEL),)
+synth: ## Generate agent_dd trajectories for SFT (make synth MODEL=claude_sonnet [SYNTH_SOURCE=deepsearchqa] [SPLIT=...])
+	@test -n "$(MODEL)" || (echo "ERROR: specify MODEL=<name>" && exit 1)
+	$(PYTHON) -m synth.generate_agent_dd \
+		--model $(MODEL) \
+		--source $(SYNTH_SOURCE) \
+		$(if $(SPLIT),--split $(SPLIT),) \
+		--concurrent $(SYNTH_CONCURRENT)
 
 # === SFT ===
 

@@ -37,7 +37,7 @@ Source: `~/Projects/agent-gym/src/`.
   upstream, not needed for v1.
 - DuckDuckGo / Serper providers — we use Exa.
 - The full 200-question training set — regenerate fresh from BrowseComp's
-  training-question distribution via `synth/generate.py`.
+  training-question distribution via `synth/generate_agent_dd.py`.
 
 ## Non-negotiables when the port lands
 

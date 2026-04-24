@@ -27,6 +27,7 @@ sft/data/*
 !sft/data/.gitkeep
 sft/checkpoints/
 sft/logs/
+sft/output/
 
 # Logs
 *.log
@@ -50,3 +51,8 @@ Thumbs.db
 *.pem
 *.key
 credentials.json
+
+# Personal parking lot / rough notes not intended for the repo
+ideas.md
+sft/PATCH_VERIFICATION.md
+sft/POTENTIAL_PRS.md
