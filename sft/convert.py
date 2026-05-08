@@ -461,7 +461,7 @@ def _append_text_to_last_user(prompt: list[dict], text: str) -> None:
 
 def _build_agent_dd_system_prompt(max_cycles: int) -> str:
     from datetime import date as _date
-    from core.agent_dd_prompts import AGENT_DD_SYSTEM_PROMPT
+    from agents.agent_dd.prompts import AGENT_DD_SYSTEM_PROMPT
     return AGENT_DD_SYSTEM_PROMPT.format(
         date=_date.today().isoformat(),
         max_cycles=max_cycles,
@@ -488,6 +488,62 @@ def _convert_agent_dd_tool_results(blocks: list[dict]) -> list[dict]:
     return out
 
 
+def convert_agent_dd_extractor(trace: Trace) -> list[dict]:
+    """Extractor SFT examples from agent_dd traces.
+
+    One example per `browse_page` call that still carries `page_content`
+    in the source_bank. Mirrors `BrowseExtractor.extract` exactly:
+    single user message built from `BROWSE_EXTRACT_PROMPT`, single
+    assistant message containing the stored extracted text. No tools,
+    no thinking.
+
+    For Gemma SFT, render with `chat_template_kwargs={"enable_thinking":
+    False}` — the teacher (Haiku, or Gemma with thinking suppressed via
+    `_extra_kwargs`) never emitted a thinking block, and the extractor
+    is not a reasoning task.
+    """
+    from core.prompts import BROWSE_EXTRACT_PROMPT
+
+    MAX_PAGE_CHARS = 128000  # mirrors BrowseExtractor.max_page_chars default.
+
+    examples: list[dict] = []
+    for bid, entry in trace.source_bank.items():
+        if entry.get("type") != "browse":
+            continue
+        page_content = entry.get("page_content", "")
+        extracted = entry.get("text", "")
+        question = entry.get("question", "") or trace.question
+        if not page_content or not extracted:
+            continue
+        if len(page_content) > MAX_PAGE_CHARS:
+            page_content = page_content[:MAX_PAGE_CHARS] + "\n[...truncated]"
+        prompt_text = BROWSE_EXTRACT_PROMPT.format(
+            question=question,
+            title=entry.get("title", ""),
+            url=entry.get("url", ""),
+            content=page_content,
+        )
+        examples.append({
+            "task_idx": trace.task_idx,
+            "source_id": bid,
+            "prompt": [{"role": "user", "content": prompt_text}],
+            "completion": [{"role": "assistant", "content": extracted}],
+            # TRL v1.2 reads `chat_template_kwargs` per-sample inside
+            # `_prepare_dataset`'s tokenize_fn, so this threads all the way
+            # through to `apply_chat_template` with `enable_thinking=False`.
+            # Gemma 4 (thinking-capable) needs this; Qwen3 ignores it. Qwen3
+            # template does not raise on unknown kwargs, so leaving this on
+            # is safe across both targets.
+            "chat_template_kwargs": {"enable_thinking": False},
+            "meta": {
+                "agent": trace.agent,
+                "url": entry.get("url", ""),
+                "title": entry.get("title", ""),
+            },
+        })
+    return examples
+
+
 def convert_agent_dd_per_turn(trace: Trace) -> list[dict]:
     """Per-turn SFT examples for agent_dd traces.
 
@@ -499,7 +555,7 @@ def convert_agent_dd_per_turn(trace: Trace) -> list[dict]:
     - Trace must carry `turn_states` (one per assistant turn, in order).
       Older traces without it are skipped with a warning.
     """
-    from core.agent_dd_tools import AGENT_DD_OPENAI_TOOLS
+    from agents.agent_dd.tools import AGENT_DD_OPENAI_TOOLS
 
     max_cycles = 0
     for s in trace.turn_states:
@@ -566,6 +622,10 @@ def convert_agent_dd_per_turn(trace: Trace) -> list[dict]:
             "prompt": deepcopy(prompt),
             "completion": deepcopy(completion),
             "tools": _filter_openai_tools(AGENT_DD_OPENAI_TOOLS, state.tools_available),
+            # Searcher samples carry a reasoning_content target in the
+            # completion — Gemma's template must render with thinking ON.
+            # Qwen3's template ignores this kwarg harmlessly.
+            "chat_template_kwargs": {"enable_thinking": True},
             # Per-turn diagnostics (not used by training but preserved for
             # debugging and filtering):
             "meta": {
@@ -614,6 +674,8 @@ def convert_dir(
             )
         elif mode == "agent-dd-per-turn":
             records.extend(convert_agent_dd_per_turn(trace))
+        elif mode == "agent-dd-extractor":
+            records.extend(convert_agent_dd_extractor(trace))
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
@@ -630,12 +692,13 @@ def main():
     p.add_argument("--output", type=Path, required=True)
     p.add_argument(
         "--mode",
-        choices=["whole", "per-turn", "agent-dd-per-turn"],
+        choices=["whole", "per-turn", "agent-dd-per-turn", "agent-dd-extractor"],
         default="per-turn",
         help=(
             "whole/per-turn use the lean_searcher format (simulates state from "
             "messages). agent-dd-per-turn reads exact per-turn state from the "
-            "trace's turn_states — use this for agent_dd traces."
+            "trace's turn_states. agent-dd-extractor emits one (prompt, "
+            "completion) pair per browse_page call that stored page_content."
         ),
     )
     p.add_argument("--max-searches", type=int, default=DEFAULT_MAX_SEARCHES)

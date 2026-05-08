@@ -27,8 +27,8 @@ from datetime import date
 
 import anthropic
 
-from core.agent_dd_prompts import AGENT_DD_SYSTEM_PROMPT
-from core.agent_dd_tools import AGENT_DD_ANTHROPIC_TOOLS
+from agents.agent_dd.prompts import AGENT_DD_SYSTEM_PROMPT
+from agents.agent_dd.tools import AGENT_DD_ANTHROPIC_TOOLS
 from core.browse import BrowseExtractor
 from core.console import console
 from core.context import estimate_tokens, live_state_block

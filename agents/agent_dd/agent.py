@@ -12,10 +12,10 @@ import os
 import time
 from pathlib import Path
 
+from agents.agent_dd.harness import AgentDDHarness
+from agents.agent_dd.prompts import AGENT_DD_SYSTEM_PROMPT
+from agents.agent_dd.tools import CANONICAL_AGENT_DD_TOOLS
 from agents.base import BaseAgent
-from core.agent_dd_harness import AgentDDHarness
-from core.agent_dd_prompts import AGENT_DD_SYSTEM_PROMPT
-from core.agent_dd_tools import CANONICAL_AGENT_DD_TOOLS
 from core.console import console
 from core.types import Answer, Task
 
