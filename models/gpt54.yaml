@@ -1,0 +1,12 @@
+name: "gpt54"
+provider: "openai"
+model_name: "gpt-5.4"
+temperature: 0.2
+# Low reasoning effort: ~5-50 reasoning tokens per turn for short tasks.
+# Adequate for agent_dd's per-turn decisions; the long-horizon reasoning
+# lives in commit_memory rather than the model's reasoning channel.
+reasoning_effort: "low"
+# OpenAI's default endpoint (https://api.openai.com/v1) is used when
+# base_url is empty. OPENAI_API_KEY picked up from .env.
+base_url: ""
+api_key_env: ""

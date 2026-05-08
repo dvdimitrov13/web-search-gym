@@ -139,6 +139,7 @@ def generate(
     concurrent: int,
     dataset_tag: str,
     force: bool,
+    extractor_model_name: str | None = None,
 ) -> int:
     tasks = _load_tasks(source, path, split, indices)
     if not tasks:
@@ -158,7 +159,9 @@ def generate(
         console.print("[green]All tasks already have trajectories. Nothing to do.[/green]")
         return 0
 
-    agent = load_agent(agent_name, model=model_name)
+    agent = load_agent(
+        agent_name, model=model_name, extractor_model=extractor_model_name,
+    )
     agent.setup()
 
     console.print(
@@ -221,6 +224,15 @@ def main():
     p.add_argument("--agent", default="agent_dd", help="Agent name (default: agent_dd)")
     p.add_argument("--model", required=True, help="Model config name from models/*.yaml")
     p.add_argument(
+        "--extractor-model",
+        default=None,
+        help=(
+            "Optional override for the browse_page extractor model "
+            "(default: claude_sonnet via registry.DEFAULT_EXTRACTOR; "
+            "agent_dd's config.yaml may further pin it to claude-haiku)."
+        ),
+    )
+    p.add_argument(
         "--source",
         choices=["jsonl", "deepsearchqa", "filterbench", "browsecomp"],
         default="deepsearchqa",
@@ -260,6 +272,7 @@ def main():
         concurrent=args.concurrent,
         dataset_tag=dataset_tag,
         force=args.force,
+        extractor_model_name=args.extractor_model,
     )
 
 

@@ -19,7 +19,14 @@ import os
 import anthropic
 import requests
 
-from core.openai_adapter import AnthropicShim, AsyncAnthropicShim, is_openai_compat
+from core.openai_adapter import (
+    AnthropicShim,
+    AsyncAnthropicShim,
+    AsyncOpenAIResponsesShim,
+    OpenAIResponsesShim,
+    is_openai_compat,
+    is_openai_responses,
+)
 
 _OPENROUTER_BASE = "https://openrouter.ai/api"
 
@@ -46,6 +53,11 @@ def _make_clients(
     if is_openai_compat(provider):
         resolved_url = os.path.expandvars(base_url) if base_url else ""
         key = os.environ.get(api_key_env, "none") if api_key_env else "none"
+        if is_openai_responses(provider):
+            return (
+                OpenAIResponsesShim(base_url=resolved_url, api_key=key),
+                AsyncOpenAIResponsesShim(base_url=resolved_url, api_key=key),
+            )
         return (
             AnthropicShim(base_url=resolved_url, api_key=key),
             AsyncAnthropicShim(base_url=resolved_url, api_key=key),
@@ -59,30 +71,7 @@ def _make_clients(
         )
     return anthropic.Anthropic(), anthropic.AsyncAnthropic()
 
-_HAIKU_EXTRACT_PROMPT = """You are a research assistant extracting evidence from a webpage.
-
-Research question: {question}
-
-Webpage title: {title}
-URL: {url}
-
-<page>
-{content}
-</page>
-
-Your job: extract every specific fact on this page relevant to the research \
-question — named entities, exact numbers, dates, quantities, list items, \
-step details. Enumerate VERBATIM. Do NOT paraphrase or abstract. If the page \
-contains a list, reproduce it. If steps, reproduce each step. If a table of \
-values, reproduce the values.
-
-Constraints:
-- If no relevant facts are present, output exactly: "No relevant facts found."
-- Prefer dense bullet points and structured enumeration over prose.
-- Information-dense language — every token should carry factual weight.
-- Target ~256 tokens; do not exceed that materially.
-
-Extracted facts:"""
+from core.prompts import BROWSE_EXTRACT_PROMPT as _HAIKU_EXTRACT_PROMPT  # noqa: E402  # re-export for backward compat within core.browse
 
 
 def fetch_webpage_jina(
@@ -129,6 +118,7 @@ class BrowseExtractor:
         provider: str = "anthropic",
         base_url: str = "",
         api_key_env: str = "",
+        reasoning_effort: str | None = None,
     ):
         # Eagerly build both clients — cheap, and the async path is nearly
         # always used by agent_dd. Keeps the provider-switching logic in one
@@ -139,6 +129,8 @@ class BrowseExtractor:
         self.model = model
         self.max_tokens = max_tokens
         self.max_page_chars = max_page_chars
+        self.provider = provider
+        self.reasoning_effort = reasoning_effort
         # Thinking-capable OpenAI-shaped backends (vLLM serving Gemma 4 etc.)
         # need an explicit per-call override; extraction is not a reasoning
         # task and enabling thinking hides output in the stripped channel.
@@ -188,9 +180,14 @@ class BrowseExtractor:
     def _extra_kwargs(self) -> dict:
         if not self._suppress_thinking:
             return {}
-        # Only our OpenAI shim understands `extra_body` — the Anthropic SDK
-        # would reject it. Guarded above on provider.
-        return {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}}
+        out: dict = {}
+        # Gemma 4 / vLLM uses chat_template_kwargs to gate thinking off.
+        if self.provider == "vllm":
+            out["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+        # GPT-5.x uses `reasoning_effort` instead. The shim picks this up.
+        if self.reasoning_effort:
+            out["reasoning_effort"] = self.reasoning_effort
+        return out
 
     def extract(
         self, *, url: str, title: str, question: str, content: str,

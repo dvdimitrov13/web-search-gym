@@ -1,0 +1,9 @@
+name: "gpt54_mini"
+provider: "openai"
+model_name: "gpt-5.4-mini"
+temperature: 0.0
+# `minimal` reasoning effort: extraction is not a reasoning task — push
+# the model to skip reasoning tokens and emit content directly.
+reasoning_effort: "minimal"
+base_url: ""
+api_key_env: ""

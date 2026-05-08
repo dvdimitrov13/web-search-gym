@@ -63,6 +63,7 @@ class AgentDD(BaseAgent):
                 "thinking_budget", searcher_cfg.get("thinking_budget")
             ),
             thinking_passthrough=searcher_cfg.get("thinking_passthrough", False),
+            reasoning_effort=s_model.get("reasoning_effort"),
             max_cycles=budget.get("max_cycles", 5),
             results_per_query=budget.get("results_per_query", 5),
             highlight_max_chars=budget.get("highlight_max_chars", 200),
@@ -73,6 +74,7 @@ class AgentDD(BaseAgent):
             browse_extractor_provider=extractor_provider,
             browse_extractor_base_url=extractor_base_url,
             browse_extractor_api_key_env=extractor_api_key_env,
+            browse_extractor_reasoning_effort=e_model.get("reasoning_effort"),
             scratchpad_max_tokens=searcher_cfg.get("scratchpad_max_tokens", 1024),
             max_shrink_attempts=searcher_cfg.get("max_shrink_attempts", 2),
             max_nudges=searcher_cfg.get("max_nudges", 3),
