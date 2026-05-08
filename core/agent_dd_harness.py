@@ -27,19 +27,17 @@ from datetime import date
 
 import anthropic
 
+from core.agent_dd_prompts import AGENT_DD_SYSTEM_PROMPT
+from core.agent_dd_tools import AGENT_DD_ANTHROPIC_TOOLS
 from core.browse import BrowseExtractor
 from core.console import console
 from core.context import estimate_tokens, live_state_block
 from core.exa_client import ExaClient
-from core.harness import _fuzzy_replace  # reuse lean's scratchpad fuzzy matcher
-from core.agent_dd_prompts import AGENT_DD_SYSTEM_PROMPT
-from core.agent_dd_tools import AGENT_DD_ANTHROPIC_TOOLS
+from core.llm import _OPENROUTER_BASE, _RETRY_DELAYS, llm_call
 from core.openai_adapter import AnthropicShim, is_openai_compat
+from core.scratchpad import fuzzy_replace
 from core.trace import SubmittedUrl, Trace, TraceMetadata, TurnState
 from core.types import Answer, RetryableAgentError, Task
-
-_RETRY_DELAYS = [15, 30, 45]
-_OPENROUTER_BASE = "https://openrouter.ai/api"
 
 
 def _make_client(
@@ -47,14 +45,19 @@ def _make_client(
     base_url: str = "",
     api_key_env: str = "",
 ):
+    """agent_dd-specific client builder.
+
+    Differs from core.llm.make_client by also accepting OpenAI-compat
+    providers (vLLM via AnthropicShim) — the lean searcher predates that
+    path and doesn't need it. Kept here until/unless lean grows the same
+    requirement.
+    """
     if provider == "openrouter":
         return anthropic.Anthropic(
             base_url=_OPENROUTER_BASE,
             api_key=os.environ["OPENROUTER_API_KEY"],
         )
     if is_openai_compat(provider):
-        # Self-hosted vLLM (and similar) speaks OpenAI Chat Completions —
-        # wrap it so the harness can keep calling `.messages.create(...)`.
         resolved_url = os.path.expandvars(base_url) if base_url else ""
         key = os.environ.get(api_key_env, "none") if api_key_env else "none"
         return AnthropicShim(base_url=resolved_url, api_key=key)
@@ -64,19 +67,6 @@ def _make_client(
             api_key=os.environ.get(api_key_env, "none") if api_key_env else "none",
         )
     return anthropic.Anthropic()
-
-
-def _llm_call(client, **kwargs):
-    for attempt, delay in enumerate(_RETRY_DELAYS):
-        try:
-            return client.messages.create(**kwargs)
-        except (anthropic.RateLimitError, anthropic.APIConnectionError) as e:
-            console.print(
-                f"  [yellow]Retry {attempt + 1}/{len(_RETRY_DELAYS)}: "
-                f"{type(e).__name__}, waiting {delay}s…[/yellow]"
-            )
-            time.sleep(delay)
-    return client.messages.create(**kwargs)
 
 
 def _short_id(prefix: str, *parts: str) -> str:
@@ -369,7 +359,7 @@ class AgentDDHarness:
                 "type": "enabled",
                 "budget_tokens": self.thinking_budget,
             }
-        return _llm_call(self.client, **kwargs)
+        return llm_call(self.client, **kwargs)
 
     def _build_live_state_text(
         self,
@@ -793,7 +783,7 @@ class AgentDDHarness:
         new_text = block.input.get("new_text", "")
 
         if old_text is not None:
-            candidate, matched = _fuzzy_replace(scratchpad, old_text, new_text)
+            candidate, matched = fuzzy_replace(scratchpad, old_text, new_text)
             op = "edited" if matched else "old_text not found, no change"
         else:
             candidate = new_text

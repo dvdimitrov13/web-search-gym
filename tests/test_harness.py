@@ -4,25 +4,25 @@ from __future__ import annotations
 
 
 def test_fuzzy_replace_exact():
-    from core.harness import _fuzzy_replace
+    from core.scratchpad import fuzzy_replace
 
-    out, matched = _fuzzy_replace("hello world", "world", "there")
+    out, matched = fuzzy_replace("hello world", "world", "there")
     assert matched is True
     assert out == "hello there"
 
 
 def test_fuzzy_replace_whitespace_normalized():
-    from core.harness import _fuzzy_replace
+    from core.scratchpad import fuzzy_replace
 
-    out, matched = _fuzzy_replace("line1\n\nline2", "line1 line2", "ok")
+    out, matched = fuzzy_replace("line1\n\nline2", "line1 line2", "ok")
     assert matched is True
     assert "ok" in out
 
 
 def test_fuzzy_replace_missing():
-    from core.harness import _fuzzy_replace
+    from core.scratchpad import fuzzy_replace
 
-    out, matched = _fuzzy_replace("hello world", "nope", "x")
+    out, matched = fuzzy_replace("hello world", "nope", "x")
     assert matched is False
     assert out == "hello world"
 

@@ -15,12 +15,8 @@ format is produced by `core/extractor.py` in a separate stage.
 from __future__ import annotations
 
 import json
-import os
-import re
 import time
 from datetime import date
-
-import anthropic
 
 from core.console import console
 from core.context import (
@@ -29,128 +25,16 @@ from core.context import (
     live_state_block,
 )
 from core.exa_client import ExaClient
+from core.llm import llm_call, make_client
 from core.prompts import (
     SEARCHER_PROMPT,
     SEARCHER_PROMPT_NO_SCRATCHPAD,
     THINKING_INSTRUCTION,
 )
+from core.scratchpad import fuzzy_replace
 from core.tools import ANTHROPIC_TOOLS
 from core.trace import SubmittedUrl, Trace, TraceMetadata
 from core.types import RetryableAgentError, SourceInfo, Task
-
-_RETRY_DELAYS = [15, 30, 45]
-_OPENROUTER_BASE = "https://openrouter.ai/api"
-
-
-# ── Client construction ─────────────────────────────────────────────
-
-
-def make_client(
-    provider: str,
-    base_url: str = "",
-    api_key_env: str = "",
-) -> anthropic.Anthropic:
-    """Create an Anthropic-compatible client.
-
-    - `anthropic` (default): native Anthropic.
-    - `openrouter`: routes to OpenRouter with the Anthropic-compatible schema.
-    - Custom `base_url` (e.g. a vLLM proxy): uses a fake API key if the env
-      var isn't set.
-    """
-    if provider == "openrouter":
-        return anthropic.Anthropic(
-            base_url=_OPENROUTER_BASE,
-            api_key=os.environ["OPENROUTER_API_KEY"],
-        )
-    if base_url:
-        return anthropic.Anthropic(
-            base_url=os.path.expandvars(base_url),
-            api_key=os.environ.get(api_key_env, "none") if api_key_env else "none",
-        )
-    return anthropic.Anthropic()
-
-
-def _llm_call(client, **kwargs):
-    """Sync call with backoff on rate-limit / connection errors."""
-    for attempt, delay in enumerate(_RETRY_DELAYS):
-        try:
-            return client.messages.create(**kwargs)
-        except (anthropic.RateLimitError, anthropic.APIConnectionError) as e:
-            console.print(
-                f"  [yellow]Retry {attempt + 1}/{len(_RETRY_DELAYS)}: "
-                f"{type(e).__name__}, waiting {delay}s…[/yellow]"
-            )
-            time.sleep(delay)
-    return client.messages.create(**kwargs)
-
-
-# ── Scratchpad edit primitive ───────────────────────────────────────
-
-
-def _fuzzy_replace(text: str, old: str, new: str) -> tuple[str, bool]:
-    """Replace `old` in `text` with relaxed whitespace matching.
-
-    Three tiers, in order:
-    1. Exact substring match.
-    2. Whitespace-normalized match, mapped back to original text.
-    3. rapidfuzz partial-ratio alignment with 95% similarity floor.
-
-    Returns (new_text, matched).
-    """
-    if old in text:
-        return text.replace(old, new, 1), True
-
-    def normalize(s: str) -> str:
-        return re.sub(r"\s+", " ", s).strip()
-
-    norm_old = normalize(old)
-    norm_text = normalize(text)
-    idx = norm_text.find(norm_old)
-
-    if idx != -1:
-        # Map normalized index back to original positions.
-        char_map: list[int] = []
-        in_ws = False
-        norm_pos = 0
-        for oi, c in enumerate(text):
-            if c in " \t\n\r":
-                if not in_ws and norm_pos > 0:
-                    char_map.append(oi)
-                    norm_pos += 1
-                in_ws = True
-            else:
-                in_ws = False
-                char_map.append(oi)
-                norm_pos += 1
-
-        if idx < len(char_map):
-            orig_start = char_map[idx]
-            end_idx = idx + len(norm_old)
-            if end_idx <= len(char_map):
-                orig_end = char_map[end_idx - 1] + 1
-            elif char_map:
-                orig_end = char_map[-1] + 1
-            else:
-                orig_end = len(text)
-            return text[:orig_start] + new + text[orig_end:], True
-
-    # Tier 3: rapidfuzz
-    try:
-        from rapidfuzz import fuzz
-        alignment = fuzz.partial_ratio_alignment(old, text, score_cutoff=95)
-        if (
-            alignment is not None
-            and alignment.score >= 95
-            and alignment.dest_end > alignment.dest_start
-        ):
-            return (
-                text[: alignment.dest_start] + new + text[alignment.dest_end :],
-                True,
-            )
-    except ImportError:
-        pass
-
-    return text, False
 
 
 # ── Harness ─────────────────────────────────────────────────────────
@@ -421,7 +305,7 @@ class SearcherHarness:
                 "type": "enabled",
                 "budget_tokens": self.thinking_budget,
             }
-        return _llm_call(self.client, **kwargs)
+        return llm_call(self.client, **kwargs)
 
     def _assistant_message(self, response) -> dict:
         """Convert an Anthropic response into an assistant message for replay.
@@ -596,7 +480,7 @@ class SearcherHarness:
         new_text = block.input.get("new_text", "")
 
         if old_text is not None:
-            candidate, matched = _fuzzy_replace(scratchpad, old_text, new_text)
+            candidate, matched = fuzzy_replace(scratchpad, old_text, new_text)
             op = "edited" if matched else "old_text not found, no change"
         else:
             candidate = new_text

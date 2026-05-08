@@ -31,7 +31,7 @@ from core.chroma_tools import ANTHROPIC_CHROMA_TOOLS
 from core.console import console
 from core.context import exa_api_block
 from core.exa_client import ExaClient, HighlightChunk
-from core.harness import _RETRY_DELAYS, _llm_call, make_client
+from core.llm import _RETRY_DELAYS, llm_call, make_client
 from core.prompts import CHROMA_SEARCHER_PROMPT, THINKING_INSTRUCTION
 from core.trace import SubmittedUrl, Trace, TraceMetadata
 from core.types import RetryableAgentError, SourceInfo, Task
@@ -308,7 +308,7 @@ class ChromaHarness:
         )
         if self.thinking_budget:
             kwargs["thinking"] = {"type": "enabled", "budget_tokens": self.thinking_budget}
-        return _llm_call(self.client, **kwargs)
+        return llm_call(self.client, **kwargs)
 
     # ── Tool dispatch ───────────────────────────────────────────────
 
