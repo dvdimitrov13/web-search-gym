@@ -57,13 +57,14 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from agents.lean_searcher.prompts import SEARCHER_PROMPT
+from agents.lean_searcher.tools import OPENAI_TOOLS
 from core.context import (
     estimate_tokens,
     exa_api_block,
     live_state_block,
 )
-from core.prompts import SEARCHER_PROMPT, THINKING_INSTRUCTION
-from core.tools import OPENAI_TOOLS
+from core.prompts import THINKING_INSTRUCTION
 from core.trace import Trace
 
 

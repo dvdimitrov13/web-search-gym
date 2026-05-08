@@ -20,12 +20,7 @@ on this path yet).
 
 from __future__ import annotations
 
-from core.tools import CANONICAL_TOOLS as _LEAN_TOOLS, EXA_SEARCH_FILTERS
-
-# Reuse the lean_searcher commit_memory schema verbatim so the training
-# contract stays identical across both agents. If lean changes the schema,
-# agent_dd picks it up automatically.
-_COMMIT_MEMORY_SPEC = _LEAN_TOOLS["commit_memory"]
+from core.tools import COMMIT_MEMORY_SPEC, EXA_SEARCH_FILTERS
 
 
 CANONICAL_AGENT_DD_TOOLS = {
@@ -89,7 +84,7 @@ CANONICAL_AGENT_DD_TOOLS = {
         },
         "required": ["url", "question"],
     },
-    "commit_memory": _COMMIT_MEMORY_SPEC,
+    "commit_memory": COMMIT_MEMORY_SPEC,
     "answer": {
         "description": (
             "Submit the final answer. Call this exactly once, when you "

@@ -28,8 +28,8 @@ def test_fuzzy_replace_missing():
 
 
 def test_tool_set_matches_canonical():
-    """Harness-exported ANTHROPIC_TOOLS has every canonical tool."""
-    from core.harness import ANTHROPIC_TOOLS
+    """lean_searcher's ANTHROPIC_TOOLS has every canonical tool."""
+    from agents.lean_searcher.tools import ANTHROPIC_TOOLS
 
     names = {t["name"] for t in ANTHROPIC_TOOLS}
     assert names == {"exa_search", "commit_memory", "submit"}
@@ -38,7 +38,7 @@ def test_tool_set_matches_canonical():
 def test_system_prompt_contains_date_and_budget():
     """_build_system renders SEARCHER_PROMPT placeholders."""
     # Build a harness without triggering API clients — we only need _build_system.
-    from core.harness import SearcherHarness
+    from agents.lean_searcher.harness import SearcherHarness
 
     # Instantiate with dummy creds; Exa client construction is lazy via default.
     import os

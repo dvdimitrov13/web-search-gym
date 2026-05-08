@@ -15,11 +15,11 @@ import time
 from pathlib import Path
 
 from agents.base import BaseAgent
+from agents.lean_searcher.harness import SearcherHarness
+from agents.lean_searcher.prompts import SEARCHER_PROMPT
+from agents.lean_searcher.tools import CANONICAL_TOOLS
 from core.console import console
 from core.extractor import Extractor
-from core.harness import SearcherHarness
-from core.prompts import SEARCHER_PROMPT
-from core.tools import CANONICAL_TOOLS
 from core.types import Answer, Task
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent

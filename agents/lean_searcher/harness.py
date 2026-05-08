@@ -18,6 +18,11 @@ import json
 import time
 from datetime import date
 
+from agents.lean_searcher.prompts import (
+    SEARCHER_PROMPT,
+    SEARCHER_PROMPT_NO_SCRATCHPAD,
+)
+from agents.lean_searcher.tools import ANTHROPIC_TOOLS
 from core.console import console
 from core.context import (
     estimate_tokens,
@@ -26,13 +31,8 @@ from core.context import (
 )
 from core.exa_client import ExaClient
 from core.llm import llm_call, make_client
-from core.prompts import (
-    SEARCHER_PROMPT,
-    SEARCHER_PROMPT_NO_SCRATCHPAD,
-    THINKING_INSTRUCTION,
-)
+from core.prompts import THINKING_INSTRUCTION
 from core.scratchpad import fuzzy_replace
-from core.tools import ANTHROPIC_TOOLS
 from core.trace import SubmittedUrl, Trace, TraceMetadata
 from core.types import RetryableAgentError, SourceInfo, Task
 
