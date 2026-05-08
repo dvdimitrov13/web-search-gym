@@ -29,6 +29,7 @@ writeout — no dedicated output dir is needed.
 from __future__ import annotations
 
 import argparse
+import os
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -58,11 +59,14 @@ _TRAJECTORIES_DIR = _REPO_ROOT / "trajectories"
 def _filter_already_done(tasks: list[Task], agent_name: str) -> tuple[list[Task], int]:
     """Drop tasks whose trace already exists on disk.
 
-    Matches the path the agent writes to (`trajectories/<agent>/idx-N.json`).
-    Makes the synth run restart-safe: a Ctrl+C mid-run can be resumed without
-    re-spending on completed trajectories.
+    Matches the path the agent writes to. agent_dd honors the
+    `AGENT_DD_TRAJECTORIES_SUBDIR` env var to write to a custom subdir
+    (used to keep filter-aware v2 traces separate from v1 filter-less
+    ones); the dedup check must look in the same place or it will
+    skip-by-old and underrun by new.
     """
-    out_dir = _TRAJECTORIES_DIR / agent_name
+    subdir_override = os.environ.get("AGENT_DD_TRAJECTORIES_SUBDIR", "")
+    out_dir = _TRAJECTORIES_DIR / (subdir_override or agent_name)
     remaining: list[Task] = []
     skipped = 0
     for t in tasks:
