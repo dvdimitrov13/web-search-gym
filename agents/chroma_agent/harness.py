@@ -1,6 +1,6 @@
 """Chroma-style multi-turn searcher harness.
 
-Tools: search / grep / prune / submit (see core/chroma_tools.py).
+Tools: search / grep / prune / submit (see agents/chroma_agent/tools.py).
 
 Differences from SearcherHarness:
 - Search returns chunked highlights (not per-URL summaries).
@@ -27,12 +27,13 @@ from typing import Any
 
 import anthropic
 
-from core.chroma_tools import ANTHROPIC_CHROMA_TOOLS
+from agents.chroma_agent.prompts import CHROMA_SEARCHER_PROMPT
+from agents.chroma_agent.tools import ANTHROPIC_CHROMA_TOOLS
 from core.console import console
 from core.context import exa_api_block
 from core.exa_client import ExaClient, HighlightChunk
 from core.llm import _RETRY_DELAYS, llm_call, make_client
-from core.prompts import CHROMA_SEARCHER_PROMPT, THINKING_INSTRUCTION
+from core.prompts import THINKING_INSTRUCTION
 from core.trace import SubmittedUrl, Trace, TraceMetadata
 from core.types import RetryableAgentError, SourceInfo, Task
 

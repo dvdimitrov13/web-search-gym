@@ -14,11 +14,11 @@ import time
 from pathlib import Path
 
 from agents.base import BaseAgent
-from core.chroma_harness import ChromaHarness
-from core.chroma_tools import CANONICAL_CHROMA_TOOLS
+from agents.chroma_agent.harness import ChromaHarness
+from agents.chroma_agent.prompts import CHROMA_SEARCHER_PROMPT
+from agents.chroma_agent.tools import CANONICAL_CHROMA_TOOLS
 from core.console import console
 from core.extractor import Extractor
-from core.prompts import CHROMA_SEARCHER_PROMPT
 from core.types import Answer, Task
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent

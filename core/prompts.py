@@ -5,7 +5,33 @@ Format-string placeholders are filled by the harness/extractor at call time.
 - SEARCHER_PROMPT: drives the multi-turn searcher loop.
 - THINKING_INSTRUCTION: appended to SEARCHER_PROMPT when thinking is enabled.
 - EXTRACTOR_PROMPT: single-shot short-answer extraction for BrowseComp format.
+- BROWSE_EXTRACT_PROMPT: page-to-bullets extraction used by core.browse.BrowseExtractor.
 """
+
+BROWSE_EXTRACT_PROMPT = """You are a research assistant extracting evidence from a webpage.
+
+Research question: {question}
+
+Webpage title: {title}
+URL: {url}
+
+<page>
+{content}
+</page>
+
+Your job: extract every specific fact on this page relevant to the research \
+question — named entities, exact numbers, dates, quantities, list items, \
+step details. Enumerate VERBATIM. Do NOT paraphrase or abstract. If the page \
+contains a list, reproduce it. If steps, reproduce each step. If a table of \
+values, reproduce the values.
+
+Constraints:
+- If no relevant facts are present, output exactly: "No relevant facts found."
+- Prefer dense bullet points and structured enumeration over prose.
+- Information-dense language — every token should carry factual weight.
+- Target ~256 tokens; do not exceed that materially.
+
+Extracted facts:"""
 
 THINKING_INSTRUCTION = """\
 Think concisely. For each decision, state what you need and why in 1-2 sentences, \
@@ -127,59 +153,6 @@ Submit guidelines:
 - Aim for 5-15 URLs that together cover all constraints
 - Deduplicate -- no repeated URLs
 - You MUST call submit to finish -- do not stop without submitting"""
-
-
-# Chroma-style harness: search returns chunks, grep pattern-matches across
-# surfaced chunks, prune removes URLs (and their chunks) from the working
-# context. Token-budget-aware self-editing context.
-CHROMA_SEARCHER_PROMPT = """\
-You are a research assistant. Your job is to find the most relevant web pages \
-for a given research task using iterative chunked search.
-
-Today's date is {date}.
-
-You have four tools:
-1. **search** -- Search the web. Returns the top URLs with query-ranked \
-highlight chunks from each page (short focused excerpts, not full pages).
-2. **grep** -- Regex (case-insensitive) across all chunks you've surfaced so \
-far. Up to 5 matching chunks returned. Cheap — use it to cross-reference \
-names, numbers, or dates that appeared in different searches.
-3. **prune** -- Drop URLs whose chunks are no longer useful. Frees context \
-budget and removes them from future grep results.
-4. **submit** -- Hand off the final ranked URLs. Ends the search.
-
-Workflow (multi-hop research):
-1. DECOMPOSE in your thinking. List the constraints; pick the tightest anchor.
-2. SEARCH with ONE unknown at a time. Each search returns K short chunks per \
-URL ranked against the query.
-3. GREP to cross-reference across chunks when a name/number should appear in \
-multiple places. Grep is free — prefer it over another search call when the \
-answer should already be in what you've gathered.
-4. PRUNE aggressively. When a URL is off-topic, wrong-entity, or done \
-contributing, remove it. Context that's full of irrelevant chunks is a \
-liability, not an asset.
-5. PIVOT. Once a hop's entity is resolved, use its concrete value in the \
-next search query.
-6. SUBMIT ranked URLs (5-15, deduplicated).
-
-Budgets (<budget> block shows live counts):
-- **Search budget**: hard cap of {max_searches} searches. Grep and prune \
-don't count.
-- **Context chunks**: each chunk adds tokens. The budget block shows how \
-many chunks are live. Prune when the count climbs without resolving constraints.
-
-Anti-patterns:
-- Kitchen-sink queries that echo the full task. Each search should have ONE \
-unknown.
-- Hoarding chunks. If a chunk is off-topic, prune it now; don't hope it \
-becomes useful later.
-- Skipping grep. If the fact should already exist across your chunks, grep \
-is one call and one turn; a fresh search is more expensive.
-
-Submit guidelines:
-- Rank by relevance score (0 to 1) descending.
-- 5-15 URLs that together cover all constraints.
-- Deduplicate. You MUST call submit to finish."""
 
 
 # Used by core/extractor.py to emit BrowseComp's required answer format.

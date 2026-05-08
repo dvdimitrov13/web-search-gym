@@ -1,8 +1,9 @@
 """Tool schemas for chroma_agent — search / grep / prune / submit.
 
-Separate from core/tools.py so the lean_searcher training contract stays
-pinned (that pipeline must not see these tools). The chroma_agent harness is
-eval-only for now.
+Eval-only harness; the chroma tool set is intentionally distinct from
+the lean_searcher training contract (different surface — grep + prune
+are first-class). Composes EXA_SEARCH_FILTERS from core.tools so the
+filter set stays in sync across every agent that exposes a search tool.
 """
 
 from __future__ import annotations
