@@ -18,6 +18,8 @@ from agents.base import BaseAgent
 from core.console import console
 from core.extractor import Extractor
 from core.harness import SearcherHarness
+from core.prompts import SEARCHER_PROMPT
+from core.tools import CANONICAL_TOOLS
 from core.types import Answer, Task
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -25,6 +27,9 @@ TRAJECTORIES_DIR = _REPO_ROOT / "trajectories"
 
 
 class LeanSearcherAgent(BaseAgent):
+    TOOL_SCHEMAS = CANONICAL_TOOLS
+    SYSTEM_PROMPT = SEARCHER_PROMPT
+
     def __init__(self, config_path: Path, model_configs: dict[str, dict]):
         super().__init__(config_path, model_configs)
 

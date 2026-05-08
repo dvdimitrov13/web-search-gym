@@ -20,7 +20,7 @@ on this path yet).
 
 from __future__ import annotations
 
-from core.tools import CANONICAL_TOOLS as _LEAN_TOOLS
+from core.tools import CANONICAL_TOOLS as _LEAN_TOOLS, EXA_SEARCH_FILTERS
 
 # Reuse the lean_searcher commit_memory schema verbatim so the training
 # contract stays identical across both agents. If lean changes the schema,
@@ -35,7 +35,10 @@ CANONICAL_AGENT_DD_TOOLS = {
             "highlight chunks (~200 chars each) ranked against your query. "
             "Every chunk gets a snippet id like S_abc123 that you MUST "
             "cite via the `answer` tool. Use this to breadth-scan the web "
-            "for candidate URLs before drilling in with `browse_page`."
+            "for candidate URLs before drilling in with `browse_page`. "
+            "Optional filters (category, date range, domain include/"
+            "exclude) tighten retrieval when the question implies a "
+            "specific source type or time window."
         ),
         "properties": {
             "query": {
@@ -47,6 +50,7 @@ CANONICAL_AGENT_DD_TOOLS = {
                     "parallel calls in one turn cost 1 cycle."
                 ),
             },
+            **EXA_SEARCH_FILTERS,
         },
         "required": ["query"],
     },

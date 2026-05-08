@@ -15,8 +15,10 @@ from pathlib import Path
 
 from agents.base import BaseAgent
 from core.chroma_harness import ChromaHarness
+from core.chroma_tools import CANONICAL_CHROMA_TOOLS
 from core.console import console
 from core.extractor import Extractor
+from core.prompts import CHROMA_SEARCHER_PROMPT
 from core.types import Answer, Task
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -24,6 +26,9 @@ TRAJECTORIES_DIR = _REPO_ROOT / "trajectories"
 
 
 class ChromaAgent(BaseAgent):
+    TOOL_SCHEMAS = CANONICAL_CHROMA_TOOLS
+    SYSTEM_PROMPT = CHROMA_SEARCHER_PROMPT
+
     def __init__(self, config_path: Path, model_configs: dict[str, dict]):
         super().__init__(config_path, model_configs)
 

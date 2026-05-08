@@ -12,9 +12,12 @@ The canonical definition lives in CANONICAL_TOOLS. `to_anthropic()` / `to_openai
 convert on demand. Never duplicate a schema; always call the converters.
 """
 
-# The Exa filters the searcher is allowed to pass alongside `query`.
+# The Exa filters any agent's `search` (or `exa_search`) tool composes
+# alongside its `query` parameter. Public — every per-agent tool schema
+# imports this and spreads it into the search tool's `properties`. Never
+# re-author filters from scratch; the parity test enforces this.
 # Keep this list in sync with the <exa_api> block rendered by core/context.py.
-_EXA_FILTERS: dict = {
+EXA_SEARCH_FILTERS: dict = {
     "category": {
         "type": "string",
         "description": "Filter by content category",
@@ -83,7 +86,7 @@ CANONICAL_TOOLS = {
                     "detail."
                 ),
             },
-            **_EXA_FILTERS,
+            **EXA_SEARCH_FILTERS,
         },
         "required": ["query"],
     },

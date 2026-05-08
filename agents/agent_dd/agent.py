@@ -13,8 +13,10 @@ import time
 from pathlib import Path
 
 from agents.base import BaseAgent
-from core.console import console
 from core.agent_dd_harness import AgentDDHarness
+from core.agent_dd_prompts import AGENT_DD_SYSTEM_PROMPT
+from core.agent_dd_tools import CANONICAL_AGENT_DD_TOOLS
+from core.console import console
 from core.types import Answer, Task
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -22,6 +24,9 @@ TRAJECTORIES_DIR = _REPO_ROOT / "trajectories"
 
 
 class AgentDD(BaseAgent):
+    TOOL_SCHEMAS = CANONICAL_AGENT_DD_TOOLS
+    SYSTEM_PROMPT = AGENT_DD_SYSTEM_PROMPT
+
     def __init__(self, config_path: Path, model_configs: dict[str, dict]):
         super().__init__(config_path, model_configs)
 

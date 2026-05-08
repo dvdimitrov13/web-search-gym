@@ -26,6 +26,11 @@ TRAJECTORIES_DIR = _REPO_ROOT / "trajectories"
 
 
 class ExaDeepAgent(BaseAgent):
+    # No LLM tool calls and no system prompt — exa_deep is a single
+    # Exa /research/v1 call followed by the shared extractor stage.
+    TOOL_SCHEMAS = None
+    SYSTEM_PROMPT = None
+
     def __init__(self, config_path: Path, model_configs: dict[str, dict]):
         super().__init__(config_path, model_configs)
 

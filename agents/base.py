@@ -34,6 +34,14 @@ class BaseAgent(ABC):
          make bench AGENT=my_harness MODEL=<any_model>
     """
 
+    # Class-level slots populated by subclasses. The parity test iterates
+    # every discovered agent and asserts conformance (e.g. that any
+    # `search` tool composes EXA_SEARCH_FILTERS). Set to None on agents
+    # without LLM tool calls or system prompts (e.g. exa_deep, which
+    # makes a single Exa API call with no model in the loop).
+    TOOL_SCHEMAS: dict | None = None
+    SYSTEM_PROMPT: str | None = None
+
     def __init__(self, config_path: Path, model_configs: dict[str, dict]):
         """
         Args:

@@ -7,7 +7,7 @@ eval-only for now.
 
 from __future__ import annotations
 
-from core.tools import _EXA_FILTERS
+from core.tools import EXA_SEARCH_FILTERS
 
 
 CANONICAL_CHROMA_TOOLS = {
@@ -24,7 +24,7 @@ CANONICAL_CHROMA_TOOLS = {
                 "type": "string",
                 "description": "Search query. Be specific and detailed.",
             },
-            **_EXA_FILTERS,
+            **EXA_SEARCH_FILTERS,
         },
         "required": ["query"],
     },
