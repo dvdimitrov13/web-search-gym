@@ -466,10 +466,20 @@ def _responses_to_anthropic(resp) -> _ResponseLike:
         # 'reasoning' and other item types are intentionally ignored
 
     u = getattr(resp, "usage", None)
-    usage = _UsageLike(
-        input_tokens=getattr(u, "input_tokens", 0) or 0 if u is not None else 0,
-        output_tokens=getattr(u, "output_tokens", 0) or 0 if u is not None else 0,
-    )
+    if u is not None:
+        # OpenAI's automatic prompt cache surfaces the read count under
+        # `input_tokens_details.cached_tokens`. Map it onto Anthropic's
+        # `cache_read_input_tokens` field so trace accounting works
+        # uniformly across providers.
+        details = getattr(u, "input_tokens_details", None)
+        cached = getattr(details, "cached_tokens", 0) if details is not None else 0
+        usage = _UsageLike(
+            input_tokens=getattr(u, "input_tokens", 0) or 0,
+            output_tokens=getattr(u, "output_tokens", 0) or 0,
+            cache_read_input_tokens=cached or 0,
+        )
+    else:
+        usage = _UsageLike()
 
     if has_tool_call:
         stop_reason = "tool_use"
