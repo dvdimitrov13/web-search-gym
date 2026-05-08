@@ -31,10 +31,15 @@ from agents.agent_dd.prompts import AGENT_DD_SYSTEM_PROMPT
 from agents.agent_dd.tools import AGENT_DD_ANTHROPIC_TOOLS
 from core.browse import BrowseExtractor
 from core.console import console
-from core.context import estimate_tokens, live_state_block
+from core.context import estimate_tokens, exa_api_block, live_state_block
 from core.exa_client import ExaClient
 from core.llm import _OPENROUTER_BASE, _RETRY_DELAYS, llm_call
-from core.openai_adapter import AnthropicShim, is_openai_compat
+from core.openai_adapter import (
+    AnthropicShim,
+    OpenAIResponsesShim,
+    is_openai_compat,
+    is_openai_responses,
+)
 from core.scratchpad import fuzzy_replace
 from core.trace import SubmittedUrl, Trace, TraceMetadata, TurnState
 from core.types import Answer, RetryableAgentError, Task
@@ -60,6 +65,10 @@ def _make_client(
     if is_openai_compat(provider):
         resolved_url = os.path.expandvars(base_url) if base_url else ""
         key = os.environ.get(api_key_env, "none") if api_key_env else "none"
+        # GPT-5.x needs /v1/responses to combine reasoning_effort + tools;
+        # vLLM-served models stay on /v1/chat/completions.
+        if is_openai_responses(provider):
+            return OpenAIResponsesShim(base_url=resolved_url, api_key=key)
         return AnthropicShim(base_url=resolved_url, api_key=key)
     if base_url:
         return anthropic.Anthropic(
@@ -86,6 +95,7 @@ class AgentDDHarness:
         temperature: float = 0.2,
         thinking_budget: int | None = None,
         thinking_passthrough: bool = True,
+        reasoning_effort: str | None = None,
         max_cycles: int = 5,
         results_per_query: int = 5,
         highlight_max_chars: int = 200,
@@ -96,6 +106,7 @@ class AgentDDHarness:
         browse_extractor_provider: str = "anthropic",
         browse_extractor_base_url: str = "",
         browse_extractor_api_key_env: str = "",
+        browse_extractor_reasoning_effort: str | None = None,
         scratchpad_max_tokens: int = 1024,
         max_shrink_attempts: int = 2,
         max_nudges: int = 3,
@@ -104,10 +115,12 @@ class AgentDDHarness:
         searcher_max_tokens: int = 4096,
     ):
         self.client = _make_client(provider, base_url=base_url, api_key_env=api_key_env)
+        self.provider = provider
         self.searcher_model = searcher_model
         self.temperature = temperature
         self.thinking_budget = thinking_budget
         self.thinking_passthrough = thinking_passthrough
+        self.reasoning_effort = reasoning_effort
         self.max_cycles = max_cycles
         self.results_per_query = results_per_query
         self.highlight_max_chars = highlight_max_chars
@@ -127,6 +140,7 @@ class AgentDDHarness:
             provider=browse_extractor_provider,
             base_url=browse_extractor_base_url,
             api_key_env=browse_extractor_api_key_env,
+            reasoning_effort=browse_extractor_reasoning_effort,
         )
 
     # ── Public entry ────────────────────────────────────────────────
@@ -139,6 +153,11 @@ class AgentDDHarness:
             date=date.today().isoformat(),
             max_cycles=self.max_cycles,
         )
+        # Append the same <exa_api> filter signature lean_searcher's harness
+        # uses, so Sonnet sees the full set of filter parameters Exa supports
+        # alongside the schema. The schema's `additionalProperties: True`
+        # passthrough means anything described here is forwardable.
+        system += f"\n\n{exa_api_block()}"
         messages: list[dict] = [
             {"role": "user", "content": f"Research task:\n\n{task.question}"},
         ]
@@ -354,7 +373,13 @@ class AgentDDHarness:
             messages=messages,
             tools=tools if tools is not None else AGENT_DD_ANTHROPIC_TOOLS,
         )
-        if self.thinking_budget:
+        # Anthropic gets `thinking={...}`; OpenAI-compat gets
+        # `reasoning_effort`. Setting both on a non-OpenAI Anthropic client
+        # would 400 on the unknown kwarg, so we route based on provider.
+        if is_openai_compat(self.provider):
+            if self.reasoning_effort:
+                kwargs["reasoning_effort"] = self.reasoning_effort
+        elif self.thinking_budget:
             kwargs["thinking"] = {
                 "type": "enabled",
                 "budget_tokens": self.thinking_budget,
@@ -625,7 +650,8 @@ class AgentDDHarness:
         source_bank: dict[str, dict],
         page_cache: dict[str, dict],
     ) -> dict:
-        query = (block.input or {}).get("query", "")
+        inp = block.input or {}
+        query = inp.get("query", "")
         if not query:
             return {
                 "type": "tool_result",
@@ -633,6 +659,10 @@ class AgentDDHarness:
                 "content": "search error: missing `query`",
                 "is_error": True,
             }
+        # Everything except `query` is treated as an Exa filter (category,
+        # start/end_published_date, include/exclude_domains, etc.) and forwarded
+        # via **filters to the Exa client. Same contract as lean_searcher.
+        filters = {k: v for k, v in inp.items() if k != "query"}
         try:
             # Always pull full-page text alongside highlights — no cap —
             # so browse_page can read from the cache without any external
@@ -645,6 +675,7 @@ class AgentDDHarness:
                 highlights_per_url=self.highlights_per_url,
                 include_text=True,
                 text_max_chars=None,
+                **filters,
             )
         except Exception as e:
             return {

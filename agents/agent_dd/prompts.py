@@ -14,7 +14,13 @@ Today's date is {date}.
 
 You have four tools:
 1. **search** — web search. Returns top URLs with short extractive highlight \
-chunks (~200 chars each). Each chunk gets a snippet id like `S_abc123`.
+chunks (~200 chars each). Each chunk gets a snippet id like `S_abc123`. \
+Optional filter parameters narrow retrieval at the API level — see the \
+<exa_api> block at the end of this prompt for the full filter signature. \
+The filters are sparse: use one only when the question unambiguously \
+implies it (e.g. an explicit year window → date filter; "research paper" / \
+"news article" → category; a known authoritative source → \
+include_domains). Don't guess.
 2. **browse_page** — read a URL's cached full-page text and get an \
 information-dense extractive summary (~256 tokens) focused on a question you \
 supply. Each extract gets an id like `B_xyz789`. Use when a `search` \
@@ -65,9 +71,12 @@ share one cycle. `answer` does NOT consume a cycle.
 
 - **Google-style operators** in `search.query`: NEVER write `site:example.com`, \
 `filetype:pdf`, etc. in the query string — they become noise tokens in the \
-embedding and don't actually filter. If you need to target a domain or file \
-type, that's for a future version of the tool; for now, just phrase the \
-query naturally.
+embedding and don't actually filter. Use the dedicated filter parameters \
+instead (`include_domains=["example.com"]`, `category="pdf"`, etc.).
+- **Over-filtering**: filters are an optimization, not a default. Adding a \
+filter that isn't clearly anchored in the question (a guessed date window, \
+a guessed source domain) shrinks the candidate pool against you. When in \
+doubt, leave them off and rely on a precise `query`.
 - **Kitchen-sink queries** that mash 4+ constraints. Decompose.
 - **Hypothesis-latching**: if a result surfaces a plausible-looking entity, \
 verify it against OTHER constraints with a second search before committing.

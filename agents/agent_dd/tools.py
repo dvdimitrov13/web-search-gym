@@ -134,6 +134,10 @@ def to_anthropic_tools() -> list[dict]:
                 "type": "object",
                 "properties": spec["properties"],
                 "required": spec["required"],
+                # `search` allows flat passthrough of any Exa filter — same
+                # contract as lean_searcher's exa_search. Extras land in the
+                # filters dict the harness forwards to ExaClient.
+                **({"additionalProperties": True} if name == "search" else {}),
             },
         }
         for name, spec in CANONICAL_AGENT_DD_TOOLS.items()
