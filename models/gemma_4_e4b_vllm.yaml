@@ -1,9 +1,14 @@
 name: "gemma_4_e4b_vllm"
 provider: "vllm"
-model_name: "google/gemma-4-E4B-it"
-# Served by self-hosted vLLM on vast.ai (RTX 5090, CUDA 12.8, driver 595+)
-# with --tool-call-parser gemma4. Reach via local SSH port-forward:
-#   ssh -p <vast-ssh-port> -L 8000:localhost:8000 -N -f root@ssh8.vast.ai
+model_name: "gemma_4_e4b_lora"
+# Served by self-hosted vLLM on vast.ai (RTX 5090, sm_120) with
+# --tool-call-parser gemma4. Merged LoRA (Apr 2026 SFT v1) baked into
+# base via peft.merge_and_unload — vLLM serves it as a normal Gemma 4
+# model (vLLM 0.19 does not support LoRA on
+# Gemma4ForConditionalGeneration directly).
+# Reach via local SSH port-forward (substitute your instance's port +
+# host from the vast.ai dashboard):
+#   ssh -p <vast-ssh-port> -L 8000:localhost:8000 -N -f root@<vast-ssh-host>
 base_url: "http://localhost:8000/v1"
 api_key_env: ""  # vLLM doesn't require an API key
 temperature: 0.2

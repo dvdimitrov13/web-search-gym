@@ -253,7 +253,8 @@ match Sonnet-teacher quality.
 | Sonnet 4.5 (Anthropic direct) | ON (1024) | OFF (Haiku) | 46.9% | 0.607 | .629/.612 | 32/32 | 982s | Prod shape |
 | Gemma 4 26B-A4B (OpenRouter Anthropic shim) | OFF | OFF | 16.7% | 0.306 | .326/.309 | 16/30 | stuck | 30/32, 2 HTTP hangs, 47% nudge_exhausted |
 | Gemma 4 E4B (self-hosted vLLM) | OFF | OFF | 6.2% | 0.156 | .215/.142 | 31/32 | 320s | Native parser: 97% tool-use |
-| **Gemma 4 E4B (self-hosted vLLM)** | **ON** | **OFF** | **9.4%** | **0.260** | **.362/.226** | **32/32** | 732s | Final "fair" baseline |
+| Gemma 4 E4B (self-hosted vLLM) | ON | OFF | 9.4% | 0.260 | .362/.226 | 32/32 | 732s | Untuned "fair" baseline |
+| **Gemma 4 E4B + LoRA SFT v1 (self-hosted vLLM)** | **ON** | **OFF** | **12.5%** | **0.246** | **.281/.232** | **31/32** | 882s | SFT v1; +3.1pt fully-correct, F1 ~flat. See `sft/SFT_V1_RESULTS.md` |
 
 Broken mid-iteration (not scored, deleted): Gemma E4B vLLM with
 thinking ON for BOTH searcher and extractor produced a **97.6%
@@ -280,6 +281,18 @@ strips it. Kept here as documented pitfall; the fix is per-call
    tool-use (OpenRouter Anthropic shim, our OpenAI shim, vLLM's
    `gemma4` parser) can silently mangle parallel tool-call fidelity.
    Test each hop independently.
+4. **SFT v1 LoRA on filterbench-style trajectories transfers weakly to
+   DSQA.** SFT v1 (7278 mixed agent_dd searcher+extractor turns drawn
+   from filterbench-shaped synth) lifts DSQA fully-correct from 9.4% to
+   12.5% (+3.1pt) but barely moves F1 (0.260 → 0.246, slight drop on
+   recall) and runs slower (732s → 882s, +20%) — likely because the
+   LoRA pushes the searcher to longer chains it doesn't yet fully
+   close. Compared to filterbench/test, where the same LoRA scored
+   42.4% (vs an inferred sub-10% untuned baseline by the same DSQA
+   pattern), the DSQA gap suggests a domain mismatch: the SFT data
+   teaches the agent_dd harness shape but not DSQA's broader Set
+   Answer enumeration patterns. Apples-to-apples DSQA datapoint for
+   SFT v1 — closes the open TODO from `sft/SFT_V1_RESULTS.md`.
 
 ### Self-hosted Gemma 4 setup (for repro)
 
