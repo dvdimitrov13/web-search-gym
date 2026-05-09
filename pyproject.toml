@@ -11,11 +11,14 @@ dependencies = [
     "rich>=13.0",
     "rapidfuzz>=3.0",
     "pandas>=2.0",
+    "anthropic",
 ]
 
 [project.optional-dependencies]
 agents = [
-    "anthropic>=0.30",
+    # `anthropic` is now a base dep — it's imported unconditionally by
+    # core/llm.py and every agent harness. Listed here only for the
+    # OpenAI / Exa clients that aren't used outside the agent paths.
     "openai>=1.0",
     "exa-py>=1.0",
 ]
