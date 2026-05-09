@@ -30,8 +30,19 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 import time
 import traceback
+
+# Force UTF-8 on stdout/stderr so Windows (cp1252 by default) doesn't choke
+# on Unicode in console output when the run is backgrounded with redirected
+# logs. Trace files are already written as UTF-8 in core/trace.py — this
+# only fixes the runner's progress / error printout. Do this BEFORE any
+# import that captures sys.stdout (e.g. rich's Console reads it eagerly).
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -178,23 +189,60 @@ def generate(
     completed = 0
     errors: list[tuple[int, str]] = []
 
-    with Progress(
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        TimeElapsedColumn(),
-        console=console,
-    ) as progress:
-        bar = progress.add_task("trajectories", total=len(tasks))
+    # Rich's Progress bar mangles output when stdout is redirected to a log
+    # file (background run / nohup). Fall back to plain per-task lines when
+    # the console isn't a real terminal, or when SYNTH_PLAIN_PROGRESS is set
+    # to opt out explicitly.
+    use_live_progress = console.is_terminal and not os.environ.get(
+        "SYNTH_PLAIN_PROGRESS"
+    )
 
+    def _record(idx: int, err: str | None, done: int) -> None:
+        nonlocal completed
+        if err:
+            errors.append((idx, err))
+            if not use_live_progress:
+                first = err.splitlines()[0] if err else ""
+                console.print(f"[{done}/{len(tasks)}] idx-{idx} ERROR: {first}")
+        else:
+            completed += 1
+            if not use_live_progress:
+                console.print(f"[{done}/{len(tasks)}] idx-{idx} OK")
+
+    if use_live_progress:
+        with Progress(
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            bar = progress.add_task("trajectories", total=len(tasks))
+            done = 0
+            if concurrent <= 1:
+                for task in tasks:
+                    idx, err = _run_one(agent, task, dataset_tag)
+                    done += 1
+                    _record(idx, err, done)
+                    progress.update(bar, advance=1)
+            else:
+                with ThreadPoolExecutor(max_workers=concurrent) as ex:
+                    futures = {
+                        ex.submit(_run_one, agent, task, dataset_tag): task
+                        for task in tasks
+                    }
+                    for fut in as_completed(futures):
+                        idx, err = fut.result()
+                        done += 1
+                        _record(idx, err, done)
+                        progress.update(bar, advance=1)
+    else:
+        done = 0
         if concurrent <= 1:
             for task in tasks:
                 idx, err = _run_one(agent, task, dataset_tag)
-                if err:
-                    errors.append((idx, err))
-                else:
-                    completed += 1
-                progress.update(bar, advance=1)
+                done += 1
+                _record(idx, err, done)
         else:
             with ThreadPoolExecutor(max_workers=concurrent) as ex:
                 futures = {
@@ -203,11 +251,8 @@ def generate(
                 }
                 for fut in as_completed(futures):
                     idx, err = fut.result()
-                    if err:
-                        errors.append((idx, err))
-                    else:
-                        completed += 1
-                    progress.update(bar, advance=1)
+                    done += 1
+                    _record(idx, err, done)
 
     agent.teardown()
     elapsed = time.time() - t0
