@@ -293,8 +293,14 @@ def _client_kwargs(base_url: str, api_key: str) -> dict:
     When `base_url` is empty the client falls back to OpenAI's default
     endpoint (`https://api.openai.com/v1`). When `api_key` is falsy /
     "none" the client picks up `OPENAI_API_KEY` from the environment.
+
+    Sets a per-request timeout: a stuck completion otherwise pegs a
+    harness worker indefinitely (observed: a synth run alive for 11h
+    with zero new traces because all 4 workers were waiting on hung
+    OpenAI requests). 300s is enough for long Responses-API calls
+    with reasoning while still bounding the worst case.
     """
-    out: dict = {}
+    out: dict = {"timeout": 300.0}
     if base_url:
         out["base_url"] = base_url
     if api_key and api_key != "none":
