@@ -107,8 +107,6 @@ class ExaClient:
     ):
         key = api_key or os.environ["EXA_API_KEY"]
         self._exa = Exa(key)
-        # Lazy — only instantiated when an `_async` method is first used.
-        self._exa_async: AsyncExa | None = None
         self._api_key = key
         self.num_results = num_results
         # None → let Exa pick (currently `auto`). Set to e.g. "instant" / "fast"
@@ -118,9 +116,10 @@ class ExaClient:
 
     @property
     def async_exa(self) -> AsyncExa:
-        if self._exa_async is None:
-            self._exa_async = AsyncExa(self._api_key)
-        return self._exa_async
+        # Do not cache AsyncExa across calls: agent_dd dispatch uses
+        # short-lived event loops, and reusing one async client across
+        # closed loops raises "Event loop is closed".
+        return AsyncExa(self._api_key)
 
     def search(
         self,
