@@ -1,0 +1,50 @@
+# Qwen3.5-2B searcher SFT + Unsloth + sample packing on RTX 5090 (32 GB).
+#
+# Train data: sft/data/agent_dd_searcher_v2_train.jsonl (3334 turns, 344 rollouts)
+# Val data:   sft/data/agent_dd_searcher_v2_val.jsonl   (345 turns, 38 rollouts)
+#
+# Rollout-level all-or-nothing filter at max_seq=24576 (drops 18 rollouts, 4.5%)
+# applied in prep_searcher_v2.py — anything >24k token max-turn rollout is
+# excluded entirely so we never learn partial trajectories.
+#
+# Total ≈ 304 packed-window optimizer steps (1212 windows / 8 grad_accum × 2 epochs).
+# At ~250-370s/step on 5090 with FA3, expect 21-31 hours wall, $10-15.
+
+model:
+  name: "Qwen/Qwen3.5-2B"
+
+lora:
+  rank: 16
+  alpha: 16
+  dropout: 0.0
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj",
+                   "gate_proj", "up_proj", "down_proj"]
+
+data:
+  train: "sft/data/agent_dd_searcher_v2_train.jsonl"
+  val: "sft/data/agent_dd_searcher_v2_val.jsonl"
+
+training:
+  output_dir: "sft/checkpoints/searcher_v2_qwen35_2b"
+  save_dir: "sft/output/searcher_v2_qwen35_2b"
+  epochs: 1
+  batch_size: 1
+  gradient_accumulation: 8
+  learning_rate: 2.0e-4
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.03
+  weight_decay: 0.0
+  max_seq_length: 24576
+  packing: true
+  seed: 42
+  logging_steps: 1
+  # 1 epoch ≈ 186 steps. Save every 30 → 6 saves at 30, 60, 90, 120, 150, 180.
+  # save_total_limit=3 keeps last 3 unpinned; end-of-epoch save (~186) pinned by _EpochEndSavePin.
+  save_strategy: "steps"
+  save_steps: 30
+  save_total_limit: 3
+  keep_checkpoint_steps: []
+  eval_steps: 50
+  eval_on_start: true
+  wandb_project: "web-search-gym-sft"
+  wandb_run_name: "searcher-v2-qwen35-2b-seq24k-packed-1ep"

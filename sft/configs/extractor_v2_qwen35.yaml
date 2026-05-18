@@ -1,0 +1,55 @@
+# Qwen3.5-2B + Unsloth + sample packing, single-task extractor SFT on a 4090 (24 GB).
+#
+# Train data: sft/data/extractor_v2_train.jsonl (2382 samples, 353 tasks)
+# Val data:   sft/data/extractor_v2_val.jsonl  (247 samples, 39 held-out tasks)
+#
+# Why 2B not 4B: 4B unpacked OOMs at seq>16k (probe: 22 GB peak on 4090's 24 GB).
+# Packing helps on AVERAGE windows but the worst-case packed window holds a single
+# 32k sub-sequence (~1-2% of windows, since p99 of sample lengths = 32k); for that
+# window the memory profile is identical to unpacked 32k → 4B OOMs. 2B has 10 GB
+# headroom on the same case so handles every window safely.
+
+model:
+  name: "Qwen/Qwen3.5-2B"
+
+lora:
+  rank: 16
+  alpha: 16   # Unsloth recipe uses alpha=rank for Qwen3.5
+  dropout: 0.0
+  # Explicit attention + MLP linears (avoid LoRA-wrapping anything weird in
+  # the hybrid DeltaNet/Gated-Attn block — Unsloth recipe restricts to these).
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj",
+                   "gate_proj", "up_proj", "down_proj"]
+
+data:
+  train: "sft/data/extractor_v2_train.jsonl"
+  val: "sft/data/extractor_v2_val.jsonl"
+
+training:
+  output_dir: "sft/checkpoints/extractor_v2_qwen35_2b"
+  save_dir: "sft/output/extractor_v2_qwen35_2b"
+  epochs: 2
+  batch_size: 1
+  # Packing collapses 8-20 short samples per micro-batch, so effective batch
+  # per optimizer step in samples is much larger than the nominal 8.
+  gradient_accumulation: 8
+  learning_rate: 2.0e-4      # LoRA ~10x FullFT (Thinking Machines LoRA-Without-Regret guidance)
+  lr_scheduler: "cosine"
+  warmup_ratio: 0.03
+  weight_decay: 0.0
+  max_seq_length: 32768
+  packing: true
+  seed: 42
+  logging_steps: 1
+  # Packed total ≈ 150 steps (BFD@32k → 595 packed windows/epoch confirmed in dry
+  # run, / 8 grad_accum × 2 epochs). Save every 25 → 6 saves at 25,50,75,100,125,150.
+  # End-of-epoch saves (steps 75 and 150) are pinned automatically by the
+  # _EpochEndSavePin callback — they coincide with save_steps cadence anyway.
+  save_strategy: "steps"
+  save_steps: 25
+  save_total_limit: 3
+  keep_checkpoint_steps: []  # additional manual pins; epoch-end pins added at runtime
+  eval_steps: 25
+  eval_on_start: true
+  wandb_project: "web-search-gym-sft"
+  wandb_run_name: "extractor-v2-qwen35-2b-seq32k-packed"
